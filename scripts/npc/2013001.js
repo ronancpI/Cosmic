@@ -48,11 +48,15 @@ function action(mode, type, selection) {
             if(cm.getPlayer().getMapId() == 920010000) {
                 cm.warp(920010000, 2);
                 cm.dispose();
-                return;
             }
-
-            cm.sendOk("I only wish to speak to your leader!");
-            cm.dispose();
+            else if (status > 0) {
+                cm.warp(cm.getPlayer().getMap().getReturnMapId());
+                cm.dispose();
+            }
+            else {
+                cm.sendYesNo("Are you sure you want to leave without your teammates?");
+            }
+            
             return;
         }
 
