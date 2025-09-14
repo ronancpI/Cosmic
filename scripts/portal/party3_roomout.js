@@ -15,6 +15,8 @@ function enter(pi) {
                 break;
 
             case 920010500:
+                var eim = pi.getPlayer().getEventInstance();
+                if (eim.isEventLeader(pi.getPlayer())) eim.setIntProperty("statusStg4", -1);
                 exitPortal = 13;
                 break;
 
