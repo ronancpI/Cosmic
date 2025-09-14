@@ -40,8 +40,13 @@ function action(mode, type, selection) {
             status--;
     
         if (cm.getPlayer().getMapId() == 920011200) { //exit
-            cm.warp(200080101);
-            cm.dispose();
+            if (status == 0) {
+                cm.sendNext("I will now send you to #m200080101#.");
+            }
+            else {
+                cm.warp(200080101);
+                cm.dispose();
+            }
             return;
         }
         if (!cm.isEventLeader()) {
@@ -82,7 +87,7 @@ function action(mode, type, selection) {
                     } else if(eim.getIntProperty("statusStg8") == -1) {
                         cm.sendOk("Oh! You brought the #t4001055#! Please, drop it at the base of the statue to bring Minerva back!");
                     } else {
-                        cm.sendOk("Thank you for saving Minerva! Please, talk to her...");
+                        cm.sendOk("Thank you so much for rescuing goddess Minerva!");
                     }
                 } else {
                     cm.sendOk("Please, save Minerva! Gather the six pieces of her statue and then talk to me to retrieve the final piece!");
