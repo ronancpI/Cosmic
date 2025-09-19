@@ -21,38 +21,119 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package server;
 
-import client.inventory.*;
+import client.inventory.Equip;
+import client.inventory.InventoryType;
+import client.inventory.Item;
+import client.inventory.ItemFactory;
+import client.inventory.Pet;
 import config.YamlConfig;
+import constants.id.ItemId;
 import constants.inventory.ItemConstants;
+import net.jcip.annotations.GuardedBy;
 import net.server.Server;
-import net.server.audit.locks.MonitoredLockType;
-import net.server.audit.locks.factory.MonitoredReentrantLockFactory;
-import provider.MapleData;
-import provider.MapleDataProvider;
-import provider.MapleDataProviderFactory;
-import provider.MapleDataTool;
+import provider.Data;
+import provider.DataProvider;
+import provider.DataProviderFactory;
+import provider.DataTool;
+import provider.wz.WZFiles;
 import tools.DatabaseConnection;
 import tools.Pair;
 
-import java.io.File;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
-import java.util.Map.Entry;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.HOURS;
 
 /*
  * @author Flav
+ * @author Ponk
  */
 public class CashShop {
+    public static final int NX_CREDIT = 1;
+    public static final int MAPLE_POINT = 2;
+    public static final int NX_PREPAID = 4;
+
+    private final int accountId;
+    private final int characterId;
+    private int nxCredit;
+    private int maplePoint;
+    private int nxPrepaid;
+    private boolean opened;
+    private ItemFactory factory;
+    private final List<Item> inventory = new ArrayList<>();
+    private final List<Integer> wishList = new ArrayList<>();
+    private int notes = 0;
+    private final Lock lock = new ReentrantLock();
+
+    public CashShop(int accountId, int characterId, int jobType) throws SQLException {
+        this.accountId = accountId;
+        this.characterId = characterId;
+
+        if (!YamlConfig.config.server.USE_JOINT_CASHSHOP_INVENTORY) {
+            switch (jobType) {
+                case 0:
+                    factory = ItemFactory.CASH_EXPLORER;
+                    break;
+                case 1:
+                    factory = ItemFactory.CASH_CYGNUS;
+                    break;
+                case 2:
+                    factory = ItemFactory.CASH_ARAN;
+                    break;
+            }
+        } else {
+            factory = ItemFactory.CASH_OVERALL;
+        }
+
+        try (Connection con = DatabaseConnection.getConnection()) {
+            try (PreparedStatement ps = con.prepareStatement("SELECT `nxCredit`, `maplePoint`, `nxPrepaid` FROM `accounts` WHERE `id` = ?")) {
+                ps.setInt(1, accountId);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        this.nxCredit = rs.getInt("nxCredit");
+                        this.maplePoint = rs.getInt("maplePoint");
+                        this.nxPrepaid = rs.getInt("nxPrepaid");
+                    }
+                }
+            }
+
+            for (Pair<Item, InventoryType> item : factory.loadItems(accountId, false)) {
+                inventory.add(item.getLeft());
+            }
+
+            try (PreparedStatement ps = con.prepareStatement("SELECT `sn` FROM `wishlists` WHERE `charid` = ?")) {
+                ps.setInt(1, characterId);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        wishList.add(rs.getInt("sn"));
+                    }
+                }
+            }
+        }
+    }
+
     public static class CashItem {
 
-        private int sn, itemId, price;
-        private long period;
-        private short count;
-        private boolean onSale;
+        private final int sn;
+        private final int itemId;
+        private final int price;
+        private final long period;
+        private final short count;
+        private final boolean onSale;
 
         private CashItem(int sn, int itemId, int price, long period, short count, boolean onSale) {
             this.sn = sn;
@@ -88,30 +169,35 @@ public class CashShop {
 
             int petid = -1;
             if (ItemConstants.isPet(itemId)) {
-                petid = MaplePet.createPet(itemId);
+                petid = Pet.createPet(itemId);
             }
 
-            if (ItemConstants.getInventoryType(itemId).equals(MapleInventoryType.EQUIP)) {
-                item = MapleItemInformationProvider.getInstance().getEquipById(itemId);
+            if (ItemConstants.getInventoryType(itemId).equals(InventoryType.EQUIP)) {
+                item = ItemInformationProvider.getInstance().getEquipById(itemId);
             } else {
                 item = new Item(itemId, (byte) 0, count, petid);
             }
 
             if (ItemConstants.EXPIRING_ITEMS) {
                 if (period == 1) {
-                    if (itemId == 5211048 || itemId == 5360042) { // 4 Hour 2X coupons, the period is 1, but we don't want them to last a day.
-                        item.setExpiration(Server.getInstance().getCurrentTime() + (1000 * 60 * 60 * 4));
+                    switch (itemId) {
+                        case ItemId.DROP_COUPON_2X_4H,
+                             ItemId.EXP_COUPON_2X_4H: // 4 Hour 2X coupons, the period is 1, but we don't want them to last a day.
+                            item.setExpiration(Server.getInstance().getCurrentTime() + HOURS.toMillis(4));
                             /*
                             } else if(itemId == 5211047 || itemId == 5360014) { // 3 Hour 2X coupons, unused as of now
-                                    item.setExpiration(Server.getInstance().getCurrentTime() + (1000 * 60 * 60 * 3));
+                                    item.setExpiration(Server.getInstance().getCurrentTime() + HOURS.toMillis(3));
                             */
-                    } else if (itemId == 5211060) { // 2 Hour 3X coupons.
-                        item.setExpiration(Server.getInstance().getCurrentTime() + (1000 * 60 * 60 * 2));
-                    } else {
-                        item.setExpiration(Server.getInstance().getCurrentTime() + (1000 * 60 * 60 * 24));
+                            break;
+                        case ItemId.EXP_COUPON_3X_2H:
+                            item.setExpiration(Server.getInstance().getCurrentTime() + HOURS.toMillis(2));
+                            break;
+                        default:
+                            item.setExpiration(Server.getInstance().getCurrentTime() + DAYS.toMillis(1));
+                            break;
                     }
                 } else {
-                    item.setExpiration(Server.getInstance().getCurrentTime() + (1000 * 60 * 60 * 24 * period));
+                    item.setExpiration(Server.getInstance().getCurrentTime() + DAYS.toMillis(period));
                 }
             }
 
@@ -121,8 +207,9 @@ public class CashShop {
     }
 
     public static class SpecialCashItem {
-        private int sn, modifier;
-        private byte info; //?
+        private final int sn;
+        private final int modifier;
+        private final byte info; //?
 
         public SpecialCashItem(int sn, int modifier, byte info) {
             this.sn = sn;
@@ -144,59 +231,64 @@ public class CashShop {
     }
 
     public static class CashItemFactory {
+        private static volatile Map<Integer, CashItem> items = new HashMap<>();
+        private static volatile Map<Integer, List<Integer>> packages = new HashMap<>();
+        private static volatile List<SpecialCashItem> specialcashitems = new ArrayList<>();
 
-        private static final Map<Integer, CashItem> items = new HashMap<>();
-        private static final Map<Integer, List<Integer>> packages = new HashMap<>();
-        private static final List<SpecialCashItem> specialcashitems = new ArrayList<>();
-        private static final List<Integer> randomitemsns = new ArrayList<>();
+        public static void loadAllCashItems() {
+            DataProvider etc = DataProviderFactory.getDataProvider(WZFiles.ETC);
 
-        static {
-            MapleDataProvider etc = MapleDataProviderFactory.getDataProvider(new File("wz/Etc.wz"));
-
-            for (MapleData item : etc.getData("Commodity.img").getChildren()) {
-                int sn = MapleDataTool.getIntConvert("SN", item);
-                int itemId = MapleDataTool.getIntConvert("ItemId", item);
-                int price = MapleDataTool.getIntConvert("Price", item, 0);
-                long period = MapleDataTool.getIntConvert("Period", item, 1);
-                short count = (short) MapleDataTool.getIntConvert("Count", item, 1);
-                boolean onSale = MapleDataTool.getIntConvert("OnSale", item, 0) == 1;
-                items.put(sn, new CashItem(sn, itemId, price, period, count, onSale));
+            Map<Integer, CashItem> loadedItems = new HashMap<>();
+            for (Data item : etc.getData("Commodity.img").getChildren()) {
+                int sn = DataTool.getIntConvert("SN", item);
+                int itemId = DataTool.getIntConvert("ItemId", item);
+                int price = DataTool.getIntConvert("Price", item, 0);
+                long period = DataTool.getIntConvert("Period", item, 1);
+                short count = (short) DataTool.getIntConvert("Count", item, 1);
+                boolean onSale = DataTool.getIntConvert("OnSale", item, 0) == 1;
+                loadedItems.put(sn, new CashItem(sn, itemId, price, period, count, onSale));
             }
+            CashItemFactory.items = loadedItems;
 
-            for (MapleData cashPackage : etc.getData("CashPackage.img").getChildren()) {
+            Map<Integer, List<Integer>> loadedPackages = new HashMap<>();
+            for (Data cashPackage : etc.getData("CashPackage.img").getChildren()) {
                 List<Integer> cPackage = new ArrayList<>();
 
-                for (MapleData item : cashPackage.getChildByPath("SN").getChildren()) {
+                for (Data item : cashPackage.getChildByPath("SN").getChildren()) {
                     cPackage.add(Integer.parseInt(item.getData().toString()));
                 }
 
-                packages.put(Integer.parseInt(cashPackage.getName()), cPackage);
+                loadedPackages.put(Integer.parseInt(cashPackage.getName()), cPackage);
             }
+            CashItemFactory.packages = loadedPackages;
 
-            for (Entry<Integer, CashItem> e : items.entrySet()) {
-                if (e.getValue().isOnSale()) {
-                    randomitemsns.add(e.getKey());
-                }
-            }
-
+            List<SpecialCashItem> loadedSpecialItems = new ArrayList<>();
             try (Connection con = DatabaseConnection.getConnection();
                  PreparedStatement ps = con.prepareStatement("SELECT * FROM specialcashitems");
                  ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    specialcashitems.add(new SpecialCashItem(rs.getInt("sn"), rs.getInt("modifier"), rs.getByte("info")));
+                    loadedSpecialItems.add(new SpecialCashItem(rs.getInt("sn"), rs.getInt("modifier"), rs.getByte("info")));
                 }
             } catch (SQLException ex) {
                 ex.printStackTrace();
             }
+            CashItemFactory.specialcashitems = loadedSpecialItems;
         }
 
-        public static CashItem getRandomCashItem() {
-            if (randomitemsns.isEmpty()) {
-                return null;
+        public static Optional<CashItem> getRandomCashItem() {
+            if (items.isEmpty()) {
+                return Optional.empty();
             }
 
-            int rnd = (int) (Math.random() * randomitemsns.size());
-            return items.get(randomitemsns.get(rnd));
+            List<CashItem> itemPool = items.values().stream()
+                    .filter(CashItem::isOnSale)
+                    .filter(cashItem -> !ItemId.isCashPackage(cashItem.itemId))
+                    .toList();
+            return Optional.of(getRandomItem(itemPool));
+        }
+
+        private static CashItem getRandomItem(List<CashItem> items) {
+            return items.get(new Random().nextInt(items.size()));
         }
 
         public static CashItem getItem(int sn) {
@@ -220,98 +312,26 @@ public class CashShop {
         public static List<SpecialCashItem> getSpecialCashItems() {
             return specialcashitems;
         }
-
-        public static void reloadSpecialCashItems() {//Yay?
-            specialcashitems.clear();
-            try (Connection con = DatabaseConnection.getConnection();
-                 PreparedStatement ps = con.prepareStatement("SELECT * FROM specialcashitems");
-                 ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    specialcashitems.add(new SpecialCashItem(rs.getInt("sn"), rs.getInt("modifier"), rs.getByte("info")));
-                }
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-        }
     }
 
-    private int accountId, characterId, nxCredit, maplePoint, nxPrepaid;
-    private boolean opened;
-    private ItemFactory factory;
-    private List<Item> inventory = new ArrayList<>();
-    private List<Integer> wishList = new ArrayList<>();
-    private int notes = 0;
-    private Lock lock = MonitoredReentrantLockFactory.createLock(MonitoredLockType.CASHSHOP);
-
-    public CashShop(int accountId, int characterId, int jobType) throws SQLException {
-        this.accountId = accountId;
-        this.characterId = characterId;
-
-        if (!YamlConfig.config.server.USE_JOINT_CASHSHOP_INVENTORY) {
-            if (jobType == 0) {
-                factory = ItemFactory.CASH_EXPLORER;
-            } else if (jobType == 1) {
-                factory = ItemFactory.CASH_CYGNUS;
-            } else if (jobType == 2) {
-                factory = ItemFactory.CASH_ARAN;
-            }
-        } else {
-            factory = ItemFactory.CASH_OVERALL;
-        }
-
-        try (Connection con = DatabaseConnection.getConnection()) {
-            try (PreparedStatement ps = con.prepareStatement("SELECT `nxCredit`, `maplePoint`, `nxPrepaid` FROM `accounts` WHERE `id` = ?")) {
-                ps.setInt(1, accountId);
-
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        this.nxCredit = rs.getInt("nxCredit");
-                        this.maplePoint = rs.getInt("maplePoint");
-                        this.nxPrepaid = rs.getInt("nxPrepaid");
-                    }
-                }
-            }
-
-            for (Pair<Item, MapleInventoryType> item : factory.loadItems(accountId, false)) {
-                inventory.add(item.getLeft());
-            }
-
-            try (PreparedStatement ps = con.prepareStatement("SELECT `sn` FROM `wishlists` WHERE `charid` = ?")) {
-                ps.setInt(1, characterId);
-
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        wishList.add(rs.getInt("sn"));
-                    }
-                }
-            }
-        }
+    public record CashShopSurpriseResult(Item usedCashShopSurprise, Item reward) {
     }
 
     public int getCash(int type) {
-        switch (type) {
-            case 1:
-                return nxCredit;
-            case 2:
-                return maplePoint;
-            case 4:
-                return nxPrepaid;
-        }
+        return switch (type) {
+            case NX_CREDIT -> nxCredit;
+            case MAPLE_POINT -> maplePoint;
+            case NX_PREPAID -> nxPrepaid;
+            default -> 0;
+        };
 
-        return 0;
     }
 
     public void gainCash(int type, int cash) {
         switch (type) {
-            case 1:
-                nxCredit += cash;
-                break;
-            case 2:
-                maplePoint += cash;
-                break;
-            case 4:
-                nxPrepaid += cash;
-                break;
+            case NX_CREDIT -> nxCredit += cash;
+            case MAPLE_POINT -> maplePoint += cash;
+            case NX_PREPAID -> nxPrepaid += cash;
         }
     }
 
@@ -343,7 +363,7 @@ public class CashShop {
         boolean isRing;
         Equip equip = null;
         for (Item item : getInventory()) {
-            if (item.getInventoryType().equals(MapleInventoryType.EQUIP)) {
+            if (item.getInventoryType().equals(InventoryType.EQUIP)) {
                 equip = (Equip) item;
                 isRing = equip.getRingId() > -1;
             } else {
@@ -421,7 +441,7 @@ public class CashShop {
                         Item item = cItem.toItem();
                         Equip equip = null;
                         item.setGiftFrom(rs.getString("from"));
-                        if (item.getInventoryType().equals(MapleInventoryType.EQUIP)) {
+                        if (item.getInventoryType().equals(InventoryType.EQUIP)) {
                             equip = (Equip) item;
                             equip.setRingId(rs.getInt("ringid"));
                             gifts.add(new Pair<>(equip, rs.getString("message")));
@@ -469,7 +489,7 @@ public class CashShop {
             ps.executeUpdate();
         }
 
-        List<Pair<Item, MapleInventoryType>> itemsWithType = new ArrayList<>();
+        List<Pair<Item, InventoryType>> itemsWithType = new ArrayList<>();
 
         List<Item> inv = getInventory();
         for (Item item : inv) {
@@ -494,47 +514,57 @@ public class CashShop {
         }
     }
 
-    private Item getCashShopItemByItemid(int itemid) {
+    public Optional<CashShopSurpriseResult> openCashShopSurprise(long cashId) {
         lock.lock();
         try {
-            for (Item it : inventory) {
-                if (it.getItemId() == itemid) {
-                    return it;
-                }
+            Optional<Item> maybeCashShopSurprise = getItemByCashId(cashId);
+            if (maybeCashShopSurprise.isEmpty() ||
+                    maybeCashShopSurprise.get().getItemId() != ItemId.CASH_SHOP_SURPRISE) {
+                return Optional.empty();
             }
+
+            Item cashShopSurprise = maybeCashShopSurprise.get();
+            if (cashShopSurprise.getQuantity() <= 0) {
+                return Optional.empty();
+            }
+
+            if (getItemsSize() >= 100) {
+                return Optional.empty();
+            }
+
+            Optional<CashItem> cashItemReward = CashItemFactory.getRandomCashItem();
+            if (cashItemReward.isEmpty()) {
+                return Optional.empty();
+            }
+
+            short newQuantity = (short) (cashShopSurprise.getQuantity() - 1);
+            cashShopSurprise.setQuantity(newQuantity);
+            if (newQuantity <= 0) {
+                removeFromInventory(cashShopSurprise);
+            }
+
+            Item itemReward = cashItemReward.get().toItem();
+            addToInventory(itemReward);
+
+            return Optional.of(new CashShopSurpriseResult(cashShopSurprise, itemReward));
         } finally {
             lock.unlock();
         }
-
-        return null;
     }
 
-    public synchronized Pair<Item, Item> openCashShopSurprise() {
-        Item css = getCashShopItemByItemid(5222000);
+    @GuardedBy("lock")
+    private Optional<Item> getItemByCashId(long cashId) {
+        return inventory.stream()
+                .filter(item -> item.getCashId() == cashId)
+                .findAny();
+    }
 
-        if (css != null) {
-            CashItem cItem = CashItemFactory.getRandomCashItem();
-
-            if (cItem != null) {
-                if (css.getQuantity() > 1) {
-                    /* if(NOT ENOUGH SPACE) { looks like we're not dealing with cash inventory limit whatsoever, k then
-                        return null;
-                    } */
-
-                    css.setQuantity((short) (css.getQuantity() - 1));
-                } else {
-                    removeFromInventory(css);
-                }
-
-                Item item = cItem.toItem();
-                addToInventory(item);
-
-                return new Pair<>(item, css);
-            } else {
-                return null;
-            }
-        } else {
-            return null;
+    public int getItemsSize() {
+        lock.lock();
+        try {
+            return inventory.size();
+        } finally {
+            lock.unlock();
         }
     }
 

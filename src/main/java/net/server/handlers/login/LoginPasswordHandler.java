@@ -21,73 +21,60 @@
  */
 package net.server.handlers.login;
 
+import client.Client;
 import client.DefaultDates;
-import client.MapleClient;
 import config.YamlConfig;
-import net.MaplePacketHandler;
+import net.PacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
-import net.server.coordinator.session.MapleSessionCoordinator;
-import org.apache.mina.core.session.IoSession;
+import net.server.coordinator.session.Hwid;
 import tools.BCrypt;
 import tools.DatabaseConnection;
 import tools.HexTool;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import tools.PacketCreator;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.Calendar;
 
-public final class LoginPasswordHandler implements MaplePacketHandler {
+public final class LoginPasswordHandler implements PacketHandler {
 
     @Override
-    public boolean validateState(MapleClient c) {
+    public boolean validateState(Client c) {
         return !c.isLoggedIn();
     }
 
     private static String hashpwSHA512(String pwd) throws NoSuchAlgorithmException, UnsupportedEncodingException {
         MessageDigest digester = MessageDigest.getInstance("SHA-512");
         digester.update(pwd.getBytes(StandardCharsets.UTF_8), 0, pwd.length());
-        return HexTool.toString(digester.digest()).replace(" ", "").toLowerCase();
-    }
-
-    private static String getRemoteIp(IoSession session) {
-        return MapleSessionCoordinator.getSessionRemoteAddress(session);
+        return HexTool.toHexString(digester.digest()).replace(" ", "").toLowerCase();
     }
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        String remoteHost = getRemoteIp(c.getSession());
-        if (!remoteHost.contentEquals("null")) {
-            if (YamlConfig.config.server.USE_IP_VALIDATION) {    // thanks Alex-0000 (CanIGetaPR) for suggesting IP validation as a server flag
-                if (remoteHost.startsWith("127.")) {
-                    if (!YamlConfig.config.server.LOCALSERVER) { // thanks Mills for noting HOST can also have a field named "localhost"
-                        c.announce(MaplePacketCreator.getLoginFailed(13));  // cannot login as localhost if it's not a local server
-                        return;
-                    }
-                } else {
-                    if (YamlConfig.config.server.LOCALSERVER) {
-                        c.announce(MaplePacketCreator.getLoginFailed(13));  // cannot login as non-localhost if it's a local server
-                        return;
-                    }
-                }
-            }
-        } else {
-            c.announce(MaplePacketCreator.getLoginFailed(14));          // thanks Alchemist for noting remoteHost could be null
+    public final void handlePacket(InPacket p, Client c) {
+        String remoteHost = c.getRemoteAddress();
+        if (remoteHost.contentEquals("null")) {
+            c.sendPacket(PacketCreator.getLoginFailed(14));          // thanks Alchemist for noting remoteHost could be null
             return;
         }
 
-        String login = slea.readMapleAsciiString();
-        String pwd = slea.readMapleAsciiString();
+        String login = p.readString();
+        String pwd = p.readString();
         c.setAccountName(login);
 
-        slea.skip(6);   // localhost masked the initial part with zeroes...
-        byte[] hwidNibbles = slea.read(4);
-        String nibbleHwid = HexTool.toCompressedString(hwidNibbles);
-        int loginok = c.login(login, pwd, nibbleHwid);
+        p.skip(6);   // localhost masked the initial part with zeroes...
+        byte[] hwidNibbles = p.readBytes(4);
+        Hwid hwid = new Hwid(HexTool.toCompactHexString(hwidNibbles));
+        int loginok = c.login(login, pwd, hwid);
 
 
         if (YamlConfig.config.server.AUTOMATIC_REGISTER && loginok == 5) {
@@ -107,7 +94,7 @@ public final class LoginPasswordHandler implements MaplePacketHandler {
                 c.setAccID(-1);
                 e.printStackTrace();
             } finally {
-                loginok = c.login(login, pwd, nibbleHwid);
+                loginok = c.login(login, pwd, hwid);
             }
         }
 
@@ -125,33 +112,33 @@ public final class LoginPasswordHandler implements MaplePacketHandler {
         }
 
         if (c.hasBannedIP() || c.hasBannedMac()) {
-            c.announce(MaplePacketCreator.getLoginFailed(3));
+            c.sendPacket(PacketCreator.getLoginFailed(3));
             return;
         }
         Calendar tempban = c.getTempBanCalendarFromDB();
         if (tempban != null) {
             if (tempban.getTimeInMillis() > Calendar.getInstance().getTimeInMillis()) {
-                c.announce(MaplePacketCreator.getTempBan(tempban.getTimeInMillis(), c.getGReason()));
+                c.sendPacket(PacketCreator.getTempBan(tempban.getTimeInMillis(), c.getGReason()));
                 return;
             }
         }
         if (loginok == 3) {
-            c.announce(MaplePacketCreator.getPermBan(c.getGReason()));//crashes but idc :D
+            c.sendPacket(PacketCreator.getPermBan(c.getGReason()));//crashes but idc :D
             return;
         } else if (loginok != 0) {
-            c.announce(MaplePacketCreator.getLoginFailed(loginok));
+            c.sendPacket(PacketCreator.getLoginFailed(loginok));
             return;
         }
         if (c.finishLogin() == 0) {
             c.checkChar(c.getAccID());
             login(c);
         } else {
-            c.announce(MaplePacketCreator.getLoginFailed(7));
+            c.sendPacket(PacketCreator.getLoginFailed(7));
         }
     }
 
-    private static void login(MapleClient c) {
-        c.announce(MaplePacketCreator.getAuthSuccess(c));//why the fk did I do c.getAccountName()?
+    private static void login(Client c) {
+        c.sendPacket(PacketCreator.getAuthSuccess(c));//why the fk did I do c.getAccountName()?
         Server.getInstance().registerLoginState(c);
     }
 }

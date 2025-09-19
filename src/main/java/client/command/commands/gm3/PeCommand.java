@@ -23,21 +23,22 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import net.MaplePacketHandler;
+import io.netty.buffer.Unpooled;
+import net.PacketHandler;
 import net.PacketProcessor;
-import tools.FilePrinter;
+import net.packet.ByteBufInPacket;
+import net.packet.InPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.HexTool;
-import tools.data.input.ByteArrayByteStream;
-import tools.data.input.GenericSeekableLittleEndianAccessor;
-import tools.data.input.SeekableLittleEndianAccessor;
-import tools.data.output.MaplePacketLittleEndianWriter;
 
-import java.io.FileReader;
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Properties;
 
 public class PeCommand extends Command {
@@ -45,15 +46,15 @@ public class PeCommand extends Command {
         setDescription("Handle synthesized packets from file, and handle them as if sent from a client");
     }
 
+    private static final Logger log = LoggerFactory.getLogger(PeCommand.class);
+
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         String packet = "";
-        try {
-            InputStreamReader is = new FileReader("pe.txt");
+        try (BufferedReader br = Files.newBufferedReader(Path.of("pe.txt"))) {
             Properties packetProps = new Properties();
-            packetProps.load(is);
-            is.close();
+            packetProps.load(br);
             packet = packetProps.getProperty("pe");
         } catch (IOException ex) {
             ex.printStackTrace();
@@ -61,17 +62,19 @@ public class PeCommand extends Command {
             return;
 
         }
-        MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
-        mplew.write(HexTool.getByteArrayFromHexString(packet));
-        SeekableLittleEndianAccessor slea = new GenericSeekableLittleEndianAccessor(new ByteArrayByteStream(mplew.getPacket()));
-        short packetId = slea.readShort();
-        final MaplePacketHandler packetHandler = PacketProcessor.getProcessor(0, c.getChannel()).getHandler(packetId);
+
+        byte[] packetContent = HexTool.toBytes(packet);
+        InPacket inPacket = new ByteBufInPacket(Unpooled.wrappedBuffer(packetContent));
+        short packetId = inPacket.readShort();
+        final PacketHandler packetHandler = PacketProcessor.getProcessor(0, c.getChannel()).getHandler(packetId);
         if (packetHandler != null && packetHandler.validateState(c)) {
             try {
                 player.yellowMessage("Receiving: " + packet);
-                packetHandler.handlePacket(slea, c);
+                packetHandler.handlePacket(inPacket, c);
             } catch (final Throwable t) {
-                FilePrinter.printError(FilePrinter.PACKET_HANDLER + packetHandler.getClass().getName() + ".txt", t, "Error for " + (c.getPlayer() == null ? "" : "player ; " + c.getPlayer() + " on map ; " + c.getPlayer().getMapId() + " - ") + "account ; " + c.getAccountName() + "\r\n" + slea.toString());
+                final String chrInfo = player != null ? player.getName() + " on map " + player.getMapId() : "?";
+                log.warn("Error in packet handler {}. Chr {}, account {}. Packet: {}", packetHandler.getClass().getSimpleName(),
+                        chrInfo, c.getAccountName(), packet, t);
             }
         }
     }

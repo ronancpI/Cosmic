@@ -21,42 +21,42 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.inventory.MaplePet;
+import client.Character;
+import client.Client;
+import client.inventory.Pet;
 import client.inventory.PetCommand;
 import client.inventory.PetDataFactory;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 import tools.Randomizer;
-import tools.data.input.SeekableLittleEndianAccessor;
 
-public final class PetCommandHandler extends AbstractMaplePacketHandler {
+public final class PetCommandHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
-        int petId = slea.readInt();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
+        int petId = p.readInt();
         byte petIndex = chr.getPetIndex(petId);
-        MaplePet pet;
+        Pet pet;
         if (petIndex == -1) {
             return;
         } else {
             pet = chr.getPet(petIndex);
         }
-        slea.readInt();
-        slea.readByte();
-        byte command = slea.readByte();
+        p.readInt();
+        p.readByte();
+        byte command = p.readByte();
         PetCommand petCommand = PetDataFactory.getPetCommand(pet.getItemId(), command);
         if (petCommand == null) {
             return;
         }
-        
+
         if (Randomizer.nextInt(100) < petCommand.getProbability()) {
-            pet.gainClosenessFullness(chr, petCommand.getIncrease(), 0, command);
-            chr.getMap().broadcastMessage(MaplePacketCreator.commandResponse(chr.getId(), petIndex, false, command, false));
+            pet.gainTamenessFullness(chr, petCommand.getIncrease(), 0, command);
+            chr.getMap().broadcastMessage(PacketCreator.commandResponse(chr.getId(), petIndex, false, command, false));
         } else {
-            chr.getMap().broadcastMessage(MaplePacketCreator.commandResponse(chr.getId(), petIndex, true, command, false));
+            chr.getMap().broadcastMessage(PacketCreator.commandResponse(chr.getId(), petIndex, true, command, false));
         }
     }
 }

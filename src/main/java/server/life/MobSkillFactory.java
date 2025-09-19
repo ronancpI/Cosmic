@@ -21,97 +21,119 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package server.life;
 
-import net.server.audit.locks.MonitoredLockType;
-import net.server.audit.locks.MonitoredReadLock;
-import net.server.audit.locks.MonitoredReentrantReadWriteLock;
-import net.server.audit.locks.MonitoredWriteLock;
-import net.server.audit.locks.factory.MonitoredReadLockFactory;
-import net.server.audit.locks.factory.MonitoredWriteLockFactory;
-import provider.MapleData;
-import provider.MapleDataProvider;
-import provider.MapleDataProviderFactory;
-import provider.MapleDataTool;
+import provider.Data;
+import provider.DataProvider;
+import provider.DataProviderFactory;
+import provider.DataTool;
+import provider.wz.WZFiles;
 
 import java.awt.*;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
- *
  * @author Danny (Leifde)
  */
 public class MobSkillFactory {
+    private static final Map<String, MobSkill> mobSkills = new HashMap<>();
+    private static final DataProvider dataSource = DataProviderFactory.getDataProvider(WZFiles.SKILL);
+    private static final Data skillRoot = dataSource.getData("MobSkill.img");
+    private static final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    private static final Lock readLock = readWriteLock.readLock();
+    private static final Lock writeLock = readWriteLock.writeLock();
 
-    private static Map<String, MobSkill> mobSkills = new HashMap<>();
-    private final static MapleDataProvider dataSource = MapleDataProviderFactory.getDataProvider(new File(System.getProperty("wzpath") + "/Skill.wz"));
-    private static MapleData skillRoot = dataSource.getData("MobSkill.img");
-    private final static MonitoredReentrantReadWriteLock dataLock = new MonitoredReentrantReadWriteLock(MonitoredLockType.MOBSKILL_FACTORY);
-    private final static MonitoredReadLock rL = MonitoredReadLockFactory.createLock(dataLock);
-    private final static MonitoredWriteLock wL = MonitoredWriteLockFactory.createLock(dataLock);
+    public static MobSkill getMobSkillOrThrow(MobSkillType type, int level) {
+        return getMobSkill(type, level).orElseThrow(
+                () -> new IllegalArgumentException("No MobSkill exists for type %s, level %d".formatted(type, level))
+        );
+    }
 
-    public static MobSkill getMobSkill(final int skillId, final int level) {
-        final String key = skillId + "" + level;
-        rL.lock();
+    public static Optional<MobSkill> getMobSkill(final MobSkillType type, final int level) {
+        readLock.lock();
         try {
-            MobSkill ret = mobSkills.get(key);
-            if (ret != null) {
-                return ret;
+            MobSkill ms = mobSkills.get(createKey(type, level));
+            if (ms != null) {
+                return Optional.of(ms);
             }
         } finally {
-            rL.unlock();
+            readLock.unlock();
         }
-        wL.lock();
+
+        return loadMobSkill(type, level);
+    }
+
+    private static Optional<MobSkill> loadMobSkill(final MobSkillType type, final int level) {
+        writeLock.lock();
         try {
-            MobSkill ret;
-            ret = mobSkills.get(key);
-            if (ret == null) {
-                MapleData skillData = skillRoot.getChildByPath(skillId + "/level/" + level);
-                if (skillData != null) {
-                    int mpCon = MapleDataTool.getInt(skillData.getChildByPath("mpCon"), 0);
-                    List<Integer> toSummon = new ArrayList<>();
-                    for (int i = 0; i > -1; i++) {
-                        if (skillData.getChildByPath(String.valueOf(i)) == null) {
-                            break;
-                        }
-                        toSummon.add(MapleDataTool.getInt(skillData.getChildByPath(String.valueOf(i)), 0));
-                    }
-                    int effect = MapleDataTool.getInt("summonEffect", skillData, 0);
-                    int hp = MapleDataTool.getInt("hp", skillData, 100);
-                    int x = MapleDataTool.getInt("x", skillData, 1);
-                    int y = MapleDataTool.getInt("y", skillData, 1);
-                    long duration = MapleDataTool.getInt("time", skillData, 0) * 1000;
-                    long cooltime = MapleDataTool.getInt("interval", skillData, 0) * 1000;
-                    int iprop = MapleDataTool.getInt("prop", skillData, 100);
-                    float prop = iprop / 100;
-                    int limit = MapleDataTool.getInt("limit", skillData, 0);
-                    MapleData ltd = skillData.getChildByPath("lt");
-                    Point lt = null;
-                    Point rb = null;
-                    if (ltd != null) {
-                        lt = (Point) ltd.getData();
-                        rb = (Point) skillData.getChildByPath("rb").getData();
-                    }
-                    ret = new MobSkill(skillId, level);
-                    ret.addSummons(toSummon);
-                    ret.setCoolTime(cooltime);
-                    ret.setDuration(duration);
-                    ret.setHp(hp);
-                    ret.setMpCon(mpCon);
-                    ret.setSpawnEffect(effect);
-                    ret.setX(x);
-                    ret.setY(y);
-                    ret.setProp(prop);
-                    ret.setLimit(limit);
-                    ret.setLtRb(lt, rb);
+            MobSkill existingMs = mobSkills.get(createKey(type, level));
+            if (existingMs != null) {
+                return Optional.of(existingMs);
+            }
+
+            Data skillData = skillRoot.getChildByPath("%d/level/%d".formatted(type.getId(), level));
+            if (skillData == null) {
+                return Optional.empty();
+            }
+
+            int mpCon = DataTool.getInt("mpCon", skillData, 0);
+            List<Integer> toSummon = new ArrayList<>();
+            for (int i = 0; i > -1; i++) {
+                if (skillData.getChildByPath(String.valueOf(i)) == null) {
+                    break;
                 }
-                mobSkills.put(skillId + "" + level, ret);
+                toSummon.add(DataTool.getInt(skillData.getChildByPath(String.valueOf(i)), 0));
             }
-            return ret;
+            int effect = DataTool.getInt("summonEffect", skillData, 0);
+            int hp = DataTool.getInt("hp", skillData, 100);
+            int x = DataTool.getInt("x", skillData, 1);
+            int y = DataTool.getInt("y", skillData, 1);
+            int count = DataTool.getInt("count", skillData, 1);
+            long duration = SECONDS.toMillis(DataTool.getInt("time", skillData, 0));
+            long cooltime = SECONDS.toMillis(DataTool.getInt("interval", skillData, 0));
+            int iprop = DataTool.getInt("prop", skillData, 100);
+            float prop = iprop / 100;
+            int limit = DataTool.getInt("limit", skillData, 0);
+
+            Data ltData = skillData.getChildByPath("lt");
+            Data rbData = skillData.getChildByPath("rb");
+            Point lt = null;
+            Point rb = null;
+            if (ltData != null && rbData != null) {
+                lt = (Point) ltData.getData();
+                rb = (Point) rbData.getData();
+            }
+
+            MobSkill loadedMobSkill = new MobSkill.Builder(type, level)
+                    .mpCon(mpCon)
+                    .toSummon(toSummon)
+                    .cooltime(cooltime)
+                    .duration(duration)
+                    .hp(hp)
+                    .x(x)
+                    .y(y)
+                    .count(count)
+                    .prop(prop)
+                    .limit(limit)
+                    .lt(lt)
+                    .rb(rb)
+                    .build();
+
+            mobSkills.put(createKey(type, level), loadedMobSkill);
+            return Optional.of(loadedMobSkill);
         } finally {
-            wL.unlock();
+            writeLock.unlock();
         }
+    }
+
+    private static String createKey(MobSkillType type, int skillLevel) {
+        return type.getId() + "" + skillLevel;
     }
 }

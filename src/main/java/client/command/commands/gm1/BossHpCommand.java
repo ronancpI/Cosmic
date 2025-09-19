@@ -23,10 +23,10 @@
 */
 package client.command.commands.gm1;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import server.life.MapleMonster;
+import server.life.Monster;
 
 public class BossHpCommand extends Command {
     {
@@ -34,13 +34,13 @@ public class BossHpCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        for(MapleMonster monster : player.getMap().getAllMonsters()) {
-            if(monster != null && monster.isBoss() && monster.getHp() > 0) {
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        for (Monster monster : player.getMap().getAllMonsters()) {
+            if (monster != null && monster.isBoss() && monster.getHp() > 0) {
                 long percent = monster.getHp() * 100L / monster.getMaxHp();
                 String bar = "[";
-                for (int i = 0; i < 100; i++){
+                for (int i = 0; i < 100; i++) {
                     bar += i < percent ? "|" : ".";
                 }
                 bar += "]";

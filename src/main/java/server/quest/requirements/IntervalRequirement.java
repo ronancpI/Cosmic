@@ -21,77 +21,80 @@
  */
 package server.quest.requirements;
 
-import client.MapleCharacter;
-import client.MapleQuestStatus;
-import provider.MapleData;
-import provider.MapleDataTool;
-import server.quest.MapleQuest;
-import server.quest.MapleQuestRequirementType;
+import client.Character;
+import client.QuestStatus;
+import provider.Data;
+import provider.DataTool;
+import server.quest.Quest;
+import server.quest.QuestRequirementType;
+
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
- *
  * @author Tyler (Twdtwd)
  */
-public class IntervalRequirement extends MapleQuestRequirement {
-	private int interval = -1;
-	private int questID;
-	
-	public IntervalRequirement(MapleQuest quest, MapleData data) {
-		super(MapleQuestRequirementType.INTERVAL);
-		questID = quest.getId();
-                processData(data);
-	}
-	
-        public int getInterval() {
-                return interval;
+public class IntervalRequirement extends AbstractQuestRequirement {
+    private long interval = -1;
+    private final int questID;
+
+    public IntervalRequirement(Quest quest, Data data) {
+        super(QuestRequirementType.INTERVAL);
+        questID = quest.getId();
+        processData(data);
+    }
+
+    public long getInterval() {
+        return interval;
+    }
+
+    @Override
+    public void processData(Data data) {
+        interval = MINUTES.toMillis(DataTool.getInt(data));
+    }
+
+    private static String getIntervalTimeLeft(Character chr, IntervalRequirement r) {
+        StringBuilder str = new StringBuilder();
+
+        long futureTime = chr.getQuest(Quest.getInstance(r.questID)).getCompletionTime() + r.getInterval();
+        long leftTime = futureTime - System.currentTimeMillis();
+
+        byte mode = 0;
+        if (leftTime / MINUTES.toMillis(1) > 0) {
+            mode++;     //counts minutes
+
+            if (leftTime / HOURS.toMillis(1) > 0) {
+                mode++;     //counts hours
+            }
         }
-	
-	@Override
-	public void processData(MapleData data) {
-		interval = MapleDataTool.getInt(data) * 60 * 1000;
-	}
-	
-        private static String getIntervalTimeLeft(MapleCharacter chr, IntervalRequirement r) {
-                StringBuilder str = new StringBuilder();
 
-                long futureTime = chr.getQuest(MapleQuest.getInstance(r.questID)).getCompletionTime() + r.getInterval();
-                long leftTime = futureTime - System.currentTimeMillis();
+        switch (mode) {
+            case 2:
+                int hours = (int) ((leftTime / HOURS.toMillis(1)));
+                str.append(hours + " hours, ");
 
-                byte mode = 0;
-                if(leftTime / (60*1000) > 0) {
-                        mode++;     //counts minutes
+            case 1:
+                int minutes = (int) ((leftTime / MINUTES.toMillis(1)) % 60);
+                str.append(minutes + " minutes, ");
 
-                        if(leftTime / (60*60*1000) > 0)
-                               mode++;     //counts hours
-                }
-
-                switch(mode) {
-                        case 2:
-                                int hours   = (int) ((leftTime / (1000*60*60)));
-                                str.append(hours + " hours, ");
-
-                        case 1:
-                                int minutes = (int) ((leftTime / (1000*60)) % 60);
-                                str.append(minutes + " minutes, ");
-
-                        default:
-                                int seconds = (int) (leftTime / 1000) % 60 ;
-                                str.append(seconds + " seconds");
-                }
-
-                return str.toString();
+            default:
+                int seconds = (int) (leftTime / 1000) % 60;
+                str.append(seconds + " seconds");
         }
-	
-	@Override
-	public boolean check(MapleCharacter chr, Integer npcid) {
-		boolean check = !chr.getQuest(MapleQuest.getInstance(questID)).getStatus().equals(MapleQuestStatus.Status.COMPLETED);
-		boolean check2 = chr.getQuest(MapleQuest.getInstance(questID)).getCompletionTime() <= System.currentTimeMillis() - interval;
-                
-                if (check || check2) {
-                        return true;
-                } else {
-                        chr.message("This quest will become available again in approximately " + getIntervalTimeLeft(chr, this) + ".");
-                        return false;
-                }
-	}
+
+        return str.toString();
+    }
+
+    @Override
+    public boolean check(Character chr, Integer npcid) {
+        boolean check = !chr.getQuest(Quest.getInstance(questID)).getStatus().equals(QuestStatus.Status.COMPLETED);
+        boolean check2 = chr.getQuest(Quest.getInstance(questID)).getCompletionTime() <= System.currentTimeMillis() - interval;
+
+        if (check || check2) {
+            return true;
+        } else {
+            chr.message("This quest will become available again in approximately " + getIntervalTimeLeft(chr, this) + ".");
+            return false;
+        }
+    }
 }

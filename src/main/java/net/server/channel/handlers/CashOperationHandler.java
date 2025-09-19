@@ -21,53 +21,65 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.MapleRing;
+import client.Character;
+import client.Client;
+import client.Ring;
 import client.inventory.Equip;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
+import client.inventory.manipulator.InventoryManipulator;
 import config.YamlConfig;
+import constants.id.ItemId;
 import constants.inventory.ItemConstants;
-import java.sql.SQLException;
-import java.util.Calendar;
-import java.util.List;
-import java.util.Map;
-import net.AbstractMaplePacketHandler;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import server.CashShop;
 import server.CashShop.CashItem;
 import server.CashShop.CashItemFactory;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import server.MapleItemInformationProvider;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
+import server.ItemInformationProvider;
+import service.NoteService;
+import tools.PacketCreator;
 import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
 
-public final class CashOperationHandler extends AbstractMaplePacketHandler {
+import java.util.Calendar;
+import java.util.List;
+import java.util.Map;
+
+import static java.util.concurrent.TimeUnit.DAYS;
+
+public final class CashOperationHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(CashOperationHandler.class);
+
+    private final NoteService noteService;
+
+    public CashOperationHandler(NoteService noteService) {
+        this.noteService = noteService;
+    }
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
+    public void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
         CashShop cs = chr.getCashShop();
-        
+
         if (!cs.isOpened()) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
-        
+
         if (c.tryacquireClient()) {     // thanks Thora for finding out an exploit within cash operations
             try {
-                final int action = slea.readByte();
+                final int action = p.readByte();
                 if (action == 0x03 || action == 0x1E) {
-                    slea.readByte();
-                    final int useNX = slea.readInt();
-                    final int snCS = slea.readInt();
+                    p.readByte();
+                    final int useNX = p.readInt();
+                    final int snCS = p.readInt();
                     CashItem cItem = CashItemFactory.getItem(snCS);
                     if (!canBuy(chr, cItem, cs.getCash(useNX))) {
-                        FilePrinter.printError(FilePrinter.ITEM, "Denied to sell cash item with SN " + snCS);   // preventing NPE here thanks to MedicOP
+                        log.error("Denied to sell cash item with SN {}", snCS); // preventing NPE here thanks to MedicOP
                         c.enableCSActions();
                         return;
                     }
@@ -88,63 +100,64 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                         Item item = cItem.toItem();
                         cs.gainCash(useNX, cItem, chr.getWorld());  // thanks Rohenn for noticing cash operations after item acquisition
                         cs.addToInventory(item);
-                        c.announce(MaplePacketCreator.showBoughtCashItem(item, c.getAccID()));
+                        c.sendPacket(PacketCreator.showBoughtCashItem(item, c.getAccID()));
                     } else { // Package
                         cs.gainCash(useNX, cItem, chr.getWorld());
-                        
+
                         List<Item> cashPackage = CashItemFactory.getPackage(cItem.getItemId());
                         for (Item item : cashPackage) {
                             cs.addToInventory(item);
                         }
-                        c.announce(MaplePacketCreator.showBoughtCashPackage(cashPackage, c.getAccID()));
+                        c.sendPacket(PacketCreator.showBoughtCashPackage(cashPackage, c.getAccID()));
                     }
-                    c.announce(MaplePacketCreator.showCash(chr));
+                    c.sendPacket(PacketCreator.showCash(chr));
                 } else if (action == 0x04) {//TODO check for gender
-                    int birthday = slea.readInt();
-                    CashItem cItem = CashItemFactory.getItem(slea.readInt());
-                    Map<String, String> recipient = MapleCharacter.getCharacterFromDatabase(slea.readMapleAsciiString());
-                    String message = slea.readMapleAsciiString();
-                    if (!canBuy(chr, cItem, cs.getCash(4)) || message.length() < 1 || message.length() > 73) {
+                    int birthday = p.readInt();
+                    CashItem cItem = CashItemFactory.getItem(p.readInt());
+                    Map<String, String> recipient = Character.getCharacterFromDatabase(p.readString());
+                    String message = p.readString();
+                    if (!canBuy(chr, cItem, cs.getCash(CashShop.NX_PREPAID)) || message.isEmpty() || message.length() > 73) {
                         c.enableCSActions();
                         return;
                     }
                     if (!checkBirthday(c, birthday)) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xC4));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xC4));
                         return;
                     } else if (recipient == null) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xA9));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xA9));
                         return;
                     } else if (recipient.get("accountid").equals(String.valueOf(c.getAccID()))) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xA8));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xA8));
                         return;
                     }
                     cs.gainCash(4, cItem, chr.getWorld());
                     cs.gift(Integer.parseInt(recipient.get("id")), chr.getName(), message, cItem.getSN());
-                    c.announce(MaplePacketCreator.showGiftSucceed(recipient.get("name"), cItem));
-                    c.announce(MaplePacketCreator.showCash(chr));
-                    try {
-                        chr.sendNote(recipient.get("name"), chr.getName() + " has sent you a gift! Go check out the Cash Shop.", (byte) 0); //fame or not
-                    } catch (SQLException ex) {
-                        ex.printStackTrace();
+                    c.sendPacket(PacketCreator.showGiftSucceed(recipient.get("name"), cItem));
+                    c.sendPacket(PacketCreator.showCash(chr));
+
+                    String noteMessage = chr.getName() + " has sent you a gift! Go check out the Cash Shop.";
+                    noteService.sendNormal(noteMessage, chr.getName(), recipient.get("name"));
+
+                    Character receiver = c.getChannelServer().getPlayerStorage().getCharacterByName(recipient.get("name"));
+                    if (receiver != null) {
+                        noteService.show(receiver);
                     }
-                    MapleCharacter receiver = c.getChannelServer().getPlayerStorage().getCharacterByName(recipient.get("name"));
-                    if (receiver != null) receiver.showNote();
                 } else if (action == 0x05) { // Modify wish list
                     cs.clearWishList();
                     for (byte i = 0; i < 10; i++) {
-                        int sn = slea.readInt();
+                        int sn = p.readInt();
                         CashItem cItem = CashItemFactory.getItem(sn);
                         if (cItem != null && cItem.isOnSale() && sn != 0) {
                             cs.addToWishList(sn);
                         }
                     }
-                    c.announce(MaplePacketCreator.showWishList(chr, true));
+                    c.sendPacket(PacketCreator.showWishList(chr, true));
                 } else if (action == 0x06) { // Increase Inventory Slots
-                    slea.skip(1);
-                    int cash = slea.readInt();
-                    byte mode = slea.readByte();
+                    p.skip(1);
+                    int cash = p.readInt();
+                    byte mode = p.readByte();
                     if (mode == 0) {
-                        byte type = slea.readByte();
+                        byte type = p.readByte();
                         if (cs.getCash(cash) < 4000) {
                             c.enableCSActions();
                             return;
@@ -156,13 +169,13 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                         }
                         cs.gainCash(cash, -4000);
                         if (chr.gainSlots(type, qty, false)) {
-                            c.announce(MaplePacketCreator.showBoughtInventorySlots(type, chr.getSlots(type)));
-                            c.announce(MaplePacketCreator.showCash(chr));
+                            c.sendPacket(PacketCreator.showBoughtInventorySlots(type, chr.getSlots(type)));
+                            c.sendPacket(PacketCreator.showCash(chr));
                         } else {
-                            FilePrinter.printError(FilePrinter.CASHITEM_BOUGHT, "Could not add " + qty + " slots of type " + type + " for player " + MapleCharacter.makeMapleReadable(chr.getName()));
+                            log.warn("Could not add {} slots of type {} for chr {}", qty, type, Character.makeMapleReadable(chr.getName()));
                         }
                     } else {
-                        CashItem cItem = CashItemFactory.getItem(slea.readInt());
+                        CashItem cItem = CashItemFactory.getItem(p.readInt());
                         int type = (cItem.getItemId() - 9110000) / 1000;
                         if (!canBuy(chr, cItem, cs.getCash(cash))) {
                             c.enableCSActions();
@@ -175,16 +188,16 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                         }
                         cs.gainCash(cash, cItem, chr.getWorld());
                         if (chr.gainSlots(type, qty, false)) {
-                            c.announce(MaplePacketCreator.showBoughtInventorySlots(type, chr.getSlots(type)));
-                            c.announce(MaplePacketCreator.showCash(chr));
+                            c.sendPacket(PacketCreator.showBoughtInventorySlots(type, chr.getSlots(type)));
+                            c.sendPacket(PacketCreator.showCash(chr));
                         } else {
-                            FilePrinter.printError(FilePrinter.CASHITEM_BOUGHT, "Could not add " + qty + " slots of type " + type + " for player " + MapleCharacter.makeMapleReadable(chr.getName()));
+                            log.warn("Could not add {} slots of type {} for chr {}", qty, type, Character.makeMapleReadable(chr.getName()));
                         }
                     }
                 } else if (action == 0x07) { // Increase Storage Slots
-                    slea.skip(1);
-                    int cash = slea.readInt();
-                    byte mode = slea.readByte();
+                    p.skip(1);
+                    int cash = p.readInt();
+                    byte mode = p.readByte();
                     if (mode == 0) {
                         if (cs.getCash(cash) < 4000) {
                             c.enableCSActions();
@@ -197,16 +210,16 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                         }
                         cs.gainCash(cash, -4000);
                         if (chr.getStorage().gainSlots(qty)) {
-                            FilePrinter.print(FilePrinter.STORAGE + c.getAccountName() + ".txt", c.getPlayer().getName() + " bought " + qty + " slots to their account storage.");
+                            log.debug("Chr {} bought {} slots to their account storage.", c.getPlayer().getName(), qty);
                             chr.setUsedStorage();
 
-                            c.announce(MaplePacketCreator.showBoughtStorageSlots(chr.getStorage().getSlots()));
-                            c.announce(MaplePacketCreator.showCash(chr));
+                            c.sendPacket(PacketCreator.showBoughtStorageSlots(chr.getStorage().getSlots()));
+                            c.sendPacket(PacketCreator.showCash(chr));
                         } else {
-                            FilePrinter.printError(FilePrinter.CASHITEM_BOUGHT, "Could not add " + qty + " slots to " + MapleCharacter.makeMapleReadable(chr.getName()) + "'s account.");
+                            log.warn("Could not add {} slots to {}'s account.", qty, Character.makeMapleReadable(chr.getName()));
                         }
                     } else {
-                        CashItem cItem = CashItemFactory.getItem(slea.readInt());
+                        CashItem cItem = CashItemFactory.getItem(p.readInt());
 
                         if (!canBuy(chr, cItem, cs.getCash(cash))) {
                             c.enableCSActions();
@@ -219,19 +232,19 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                         }
                         cs.gainCash(cash, cItem, chr.getWorld());
                         if (chr.getStorage().gainSlots(qty)) {    // thanks ABaldParrot & Thora for detecting storage issues here
-                            FilePrinter.print(FilePrinter.STORAGE + c.getAccountName() + ".txt", c.getPlayer().getName() + " bought " + qty + " slots to their account storage.");
+                            log.debug("Chr {} bought {} slots to their account storage", c.getPlayer().getName(), qty);
                             chr.setUsedStorage();
 
-                            c.announce(MaplePacketCreator.showBoughtStorageSlots(chr.getStorage().getSlots()));
-                            c.announce(MaplePacketCreator.showCash(chr));
+                            c.sendPacket(PacketCreator.showBoughtStorageSlots(chr.getStorage().getSlots()));
+                            c.sendPacket(PacketCreator.showCash(chr));
                         } else {
-                            FilePrinter.printError(FilePrinter.CASHITEM_BOUGHT, "Could not add " + qty + " slots to " + MapleCharacter.makeMapleReadable(chr.getName()) + "'s account.");
+                            log.warn("Could not add {} slots to {}'s account", qty, Character.makeMapleReadable(chr.getName()));
                         }
                     }
                 } else if (action == 0x08) { // Increase Character Slots
-                    slea.skip(1); 
-                    int cash = slea.readInt();
-                    CashItem cItem = CashItemFactory.getItem(slea.readInt());
+                    p.skip(1);
+                    int cash = p.readInt();
+                    CashItem cItem = CashItemFactory.getItem(p.readInt());
 
                     if (!canBuy(chr, cItem, cs.getCash(cash))) {
                         c.enableCSActions();
@@ -244,69 +257,68 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                     }
                     cs.gainCash(cash, cItem, chr.getWorld());
                     if (c.gainCharacterSlot()) {
-                        c.announce(MaplePacketCreator.showBoughtCharacterSlot(c.getCharacterSlots()));
-                        c.announce(MaplePacketCreator.showCash(chr));
+                        c.sendPacket(PacketCreator.showBoughtCharacterSlot(c.getCharacterSlots()));
+                        c.sendPacket(PacketCreator.showCash(chr));
                     } else {
-                        FilePrinter.printError(FilePrinter.CASHITEM_BOUGHT, "Could not add a character slot to " + MapleCharacter.makeMapleReadable(chr.getName()) + "'s account.");
+                        log.warn("Could not add a chr slot to {}'s account", Character.makeMapleReadable(chr.getName()));
                         c.enableCSActions();
                         return;
                     }
                 } else if (action == 0x0D) { // Take from Cash Inventory
-                    Item item = cs.findByCashId(slea.readInt());
+                    Item item = cs.findByCashId(p.readInt());
                     if (item == null) {
                         c.enableCSActions();
                         return;
                     }
                     if (chr.getInventory(item.getInventoryType()).addItem(item) != -1) {
                         cs.removeFromInventory(item);
-                        c.announce(MaplePacketCreator.takeFromCashInventory(item));
+                        c.sendPacket(PacketCreator.takeFromCashInventory(item));
 
-                        if(item instanceof Equip) {
-                            Equip equip = (Equip) item;
-                            if(equip.getRingId() >= 0) {
-                                MapleRing ring = MapleRing.loadFromDb(equip.getRingId());
+                        if (item instanceof Equip equip) {
+                            if (equip.getRingId() >= 0) {
+                                Ring ring = Ring.loadFromDb(equip.getRingId());
                                 chr.addPlayerRing(ring);
                             }
                         }
                     }
                 } else if (action == 0x0E) { // Put into Cash Inventory
-                    int cashId = slea.readInt();
-                    slea.skip(4);
+                    int cashId = p.readInt();
+                    p.skip(4);
 
-                    byte invType = slea.readByte();
+                    byte invType = p.readByte();
                     if (invType < 1 || invType > 5) {
                         c.disconnect(false, false);
                         return;
                     }
 
-                    MapleInventory mi = chr.getInventory(MapleInventoryType.getByType(invType));
+                    Inventory mi = chr.getInventory(InventoryType.getByType(invType));
                     Item item = mi.findByCashId(cashId);
                     if (item == null) {
                         c.enableCSActions();
                         return;
                     } else if (c.getPlayer().getPetIndex(item.getPetId()) > -1) {
-                        chr.getClient().announce(MaplePacketCreator.serverNotice(1, "You cannot put the pet you currently equip into the Cash Shop inventory."));
+                        chr.getClient().sendPacket(PacketCreator.serverNotice(1, "You cannot put the pet you currently equip into the Cash Shop inventory."));
                         c.enableCSActions();
                         return;
-                    } else if (ItemConstants.isWeddingRing(item.getItemId()) || ItemConstants.isWeddingToken(item.getItemId())) {
-                        chr.getClient().announce(MaplePacketCreator.serverNotice(1, "You cannot put relationship items into the Cash Shop inventory."));
+                    } else if (ItemId.isWeddingRing(item.getItemId()) || ItemId.isWeddingToken(item.getItemId())) {
+                        chr.getClient().sendPacket(PacketCreator.serverNotice(1, "You cannot put relationship items into the Cash Shop inventory."));
                         c.enableCSActions();
                         return;
                     }
                     cs.addToInventory(item);
                     mi.removeSlot(item.getPosition());
-                    c.announce(MaplePacketCreator.putIntoCashInventory(item, c.getAccID()));
+                    c.sendPacket(PacketCreator.putIntoCashInventory(item, c.getAccID()));
                 } else if (action == 0x1D) { //crush ring (action 28)
-                    int birthday = slea.readInt();
+                    int birthday = p.readInt();
                     if (checkBirthday(c, birthday)) {
-                        int toCharge = slea.readInt();
-                        int SN = slea.readInt();
-                        String recipientName = slea.readMapleAsciiString();
-                        String text = slea.readMapleAsciiString();
+                        int toCharge = p.readInt();
+                        int SN = p.readInt();
+                        String recipientName = p.readString();
+                        String text = p.readString();
                         CashItem itemRing = CashItemFactory.getItem(SN);
-                        MapleCharacter partner = c.getChannelServer().getPlayerStorage().getCharacterByName(recipientName);
+                        Character partner = c.getChannelServer().getPlayerStorage().getCharacterByName(recipientName);
                         if (partner == null) {
-                            chr.getClient().announce(MaplePacketCreator.serverNotice(1, "The partner you specified cannot be found.\r\nPlease make sure your partner is online and in the same channel."));
+                            chr.sendPacket(PacketCreator.serverNotice(1, "The partner you specified cannot be found.\r\nPlease make sure your partner is online and in the same channel."));
                         } else {
 
                           /*  if (partner.getGender() == chr.getGender()) {
@@ -315,165 +327,153 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
                                 return;
                             }*/ //Gotta let them faggots marry too, hence why this is commented out <3 
 
-                            if(itemRing.toItem() instanceof Equip) {
-                                Equip eqp = (Equip) itemRing.toItem();
-                                Pair<Integer, Integer> rings = MapleRing.createRing(itemRing.getItemId(), chr, partner);
+                            if (itemRing.toItem() instanceof Equip eqp) {
+                                Pair<Integer, Integer> rings = Ring.createRing(itemRing.getItemId(), chr, partner);
                                 eqp.setRingId(rings.getLeft());
                                 cs.addToInventory(eqp);
-                                c.announce(MaplePacketCreator.showBoughtCashItem(eqp, c.getAccID()));
+                                c.sendPacket(PacketCreator.showBoughtCashItem(eqp, c.getAccID()));
                                 cs.gainCash(toCharge, itemRing, chr.getWorld());
                                 cs.gift(partner.getId(), chr.getName(), text, eqp.getSN(), rings.getRight());
-                                chr.addCrushRing(MapleRing.loadFromDb(rings.getLeft()));
-                                try {
-                                    chr.sendNote(partner.getName(), text, (byte) 1);
-                                } catch (SQLException ex) {
-                                    ex.printStackTrace();
-                                }
-                                partner.showNote();
-                            }   
+                                chr.addCrushRing(Ring.loadFromDb(rings.getLeft()));
+                                noteService.sendWithFame(text, chr.getName(), partner.getName());
+                                noteService.show(partner);
+                            }
                         }
                     } else {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xC4));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xC4));
                     }
 
-                    c.announce(MaplePacketCreator.showCash(c.getPlayer()));
+                    c.sendPacket(PacketCreator.showCash(c.getPlayer()));
                 } else if (action == 0x20) {
-                    int serialNumber = slea.readInt();  // thanks GabrielSin for detecting a potential exploit with 1 meso cash items.
+                    int serialNumber = p.readInt();  // thanks GabrielSin for detecting a potential exploit with 1 meso cash items.
                     if (serialNumber / 10000000 != 8) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xC0));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xC0));
                         return;
                     }
 
                     CashItem item = CashItemFactory.getItem(serialNumber);
                     if (item == null || !item.isOnSale()) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xC0));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xC0));
                         return;
                     }
 
                     int itemId = item.getItemId();
                     int itemPrice = item.getPrice();
                     if (itemPrice <= 0) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xC0));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xC0));
                         return;
                     }
 
                     if (chr.getMeso() >= itemPrice) {
                         if (chr.canHold(itemId)) {
                             chr.gainMeso(-itemPrice, false);
-                            MapleInventoryManipulator.addById(c, itemId, (short) 1, "", -1);
-                            c.announce(MaplePacketCreator.showBoughtQuestItem(itemId));
+                            InventoryManipulator.addById(c, itemId, (short) 1, "", -1);
+                            c.sendPacket(PacketCreator.showBoughtQuestItem(itemId));
                         }
                     }
-                    c.announce(MaplePacketCreator.showCash(c.getPlayer()));
+                    c.sendPacket(PacketCreator.showCash(c.getPlayer()));
                 } else if (action == 0x23) { //Friendship :3
-                    int birthday = slea.readInt();
+                    int birthday = p.readInt();
                     if (checkBirthday(c, birthday)) {
-                        int payment = slea.readByte();
-                        slea.skip(3); //0s
-                        int snID = slea.readInt();
+                        int payment = p.readByte();
+                        p.skip(3); //0s
+                        int snID = p.readInt();
                         CashItem itemRing = CashItemFactory.getItem(snID);
-                        String sentTo = slea.readMapleAsciiString();
-                        int available = slea.readShort() - 1;
-                        String text = slea.readAsciiString(available);
-                        slea.readByte();
-                        MapleCharacter partner = c.getChannelServer().getPlayerStorage().getCharacterByName(sentTo);
+                        String sentTo = p.readString();
+                        String text = p.readString();
+                        Character partner = c.getChannelServer().getPlayerStorage().getCharacterByName(sentTo);
                         if (partner == null) {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0xBE));
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xBE));
                         } else {
                             // Need to check to make sure its actually an equip and the right SN...
-                            if(itemRing.toItem() instanceof Equip) {
-                                Equip eqp = (Equip) itemRing.toItem();
-                                Pair<Integer, Integer> rings = MapleRing.createRing(itemRing.getItemId(), chr, partner);
+                            if (itemRing.toItem() instanceof Equip eqp) {
+                                Pair<Integer, Integer> rings = Ring.createRing(itemRing.getItemId(), chr, partner);
                                 eqp.setRingId(rings.getLeft());
                                 cs.addToInventory(eqp);
-                                c.announce(MaplePacketCreator.showBoughtCashRing(eqp, partner.getName(), c.getAccID()));
+                                c.sendPacket(PacketCreator.showBoughtCashRing(eqp, partner.getName(), c.getAccID()));
                                 cs.gainCash(payment, -itemRing.getPrice());
                                 cs.gift(partner.getId(), chr.getName(), text, eqp.getSN(), rings.getRight());
-                                chr.addFriendshipRing(MapleRing.loadFromDb(rings.getLeft()));
-                                try {
-                                    chr.sendNote(partner.getName(), text, (byte) 1);
-                                } catch (SQLException ex) {
-                                    ex.printStackTrace();
-                                }
-                                partner.showNote();
+                                chr.addFriendshipRing(Ring.loadFromDb(rings.getLeft()));
+                                noteService.sendWithFame(text, chr.getName(), partner.getName());
+                                noteService.show(partner);
                             }
                         }
                     } else {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte) 0xC4));
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xC4));
                     }
 
-                    c.announce(MaplePacketCreator.showCash(c.getPlayer()));
+                    c.sendPacket(PacketCreator.showCash(c.getPlayer()));
                 } else if (action == 0x2E) { //name change
-                    CashItem cItem = CashItemFactory.getItem(slea.readInt());
-                    if (cItem == null || !canBuy(chr, cItem, cs.getCash(4))) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                    CashItem cItem = CashItemFactory.getItem(p.readInt());
+                    if (cItem == null || !canBuy(chr, cItem, cs.getCash(CashShop.NX_PREPAID))) {
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                         c.enableCSActions();
                         return;
                     }
-                    if(cItem.getSN() == 50600000 && YamlConfig.config.server.ALLOW_CASHSHOP_NAME_CHANGE) {
-                        slea.readMapleAsciiString(); //old name
-                        String newName = slea.readMapleAsciiString();
-                        if(!MapleCharacter.canCreateChar(newName) || chr.getLevel() < 10) { //(longest ban duration isn't tracked currently)
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                    if (cItem.getSN() == 50600000 && YamlConfig.config.server.ALLOW_CASHSHOP_NAME_CHANGE) {
+                        p.readString(); //old name
+                        String newName = p.readString();
+                        if (!Character.canCreateChar(newName) || chr.getLevel() < 10) { //(longest ban duration isn't tracked currently)
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                             c.enableCSActions();
                             return;
-                        } else if(c.getTempBanCalendar() != null && c.getTempBanCalendar().getTimeInMillis() + (30*24*60*60*1000) > Calendar.getInstance().getTimeInMillis()) {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                        } else if (c.getTempBanCalendar() != null && (c.getTempBanCalendar().getTimeInMillis() + DAYS.toMillis(30)) > Calendar.getInstance().getTimeInMillis()) {
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                             c.enableCSActions();
                             return;
                         }
-                        if(chr.registerNameChange(newName)) { //success
+                        if (chr.registerNameChange(newName)) { //success
                             Item item = cItem.toItem();
-                            c.announce(MaplePacketCreator.showNameChangeSuccess(item, c.getAccID()));
+                            c.sendPacket(PacketCreator.showNameChangeSuccess(item, c.getAccID()));
                             cs.gainCash(4, cItem, chr.getWorld());
                             cs.addToInventory(item);
                         } else {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                         }
                     }
                     c.enableCSActions();
-                } else if(action == 0x31) { //world transfer
-                    CashItem cItem = CashItemFactory.getItem(slea.readInt());
-                    if (cItem == null || !canBuy(chr, cItem, cs.getCash(4))) {
-                        c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                } else if (action == 0x31) { //world transfer
+                    CashItem cItem = CashItemFactory.getItem(p.readInt());
+                    if (cItem == null || !canBuy(chr, cItem, cs.getCash(CashShop.NX_PREPAID))) {
+                        c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                         c.enableCSActions();
                         return;
                     }
-                    if(cItem.getSN() == 50600001 && YamlConfig.config.server.ALLOW_CASHSHOP_WORLD_TRANSFER) {
-                        int newWorldSelection = slea.readInt();
-                        
+                    if (cItem.getSN() == 50600001 && YamlConfig.config.server.ALLOW_CASHSHOP_WORLD_TRANSFER) {
+                        int newWorldSelection = p.readInt();
+
                         int worldTransferError = chr.checkWorldTransferEligibility();
-                        if(worldTransferError != 0 || newWorldSelection >= Server.getInstance().getWorldsSize() || Server.getInstance().getWorldsSize() <= 1) {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                        if (worldTransferError != 0 || newWorldSelection >= Server.getInstance().getWorldsSize() || Server.getInstance().getWorldsSize() <= 1) {
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                             return;
-                        } else if(newWorldSelection == c.getWorld()) {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0xDC));
+                        } else if (newWorldSelection == c.getWorld()) {
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xDC));
                             return;
-                        } else if(c.getAvailableCharacterWorldSlots(newWorldSelection) < 1 || Server.getInstance().getAccountWorldCharacterCount(c.getAccID(), newWorldSelection) >= 3) {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0xDF));
+                        } else if (c.getAvailableCharacterWorldSlots(newWorldSelection) < 1 || Server.getInstance().getAccountWorldCharacterCount(c.getAccID(), newWorldSelection) >= 3) {
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0xDF));
                             return;
-                        } else if(chr.registerWorldTransfer(newWorldSelection)) {
+                        } else if (chr.registerWorldTransfer(newWorldSelection)) {
                             Item item = cItem.toItem();
-                            c.announce(MaplePacketCreator.showWorldTransferSuccess(item, c.getAccID()));
+                            c.sendPacket(PacketCreator.showWorldTransferSuccess(item, c.getAccID()));
                             cs.gainCash(4, cItem, chr.getWorld());
                             cs.addToInventory(item);
                         } else {
-                            c.announce(MaplePacketCreator.showCashShopMessage((byte)0));
+                            c.sendPacket(PacketCreator.showCashShopMessage((byte) 0));
                         }
                     }
                     c.enableCSActions();
                 } else {
-                    System.out.println("Unhandled action: " + action + "\n" + slea);
+                    log.warn("Unhandled action: {}, packet: {}", action, p);
                 }
             } finally {
                 c.releaseClient();
             }
         } else {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         }
     }
 
-    public static boolean checkBirthday(MapleClient c, int idate) {
+    public static boolean checkBirthday(Client c, int idate) {
         int year = idate / 10000;
         int month = (idate - year * 10000) / 100;
         int day = idate - year * 10000 - month * 100;
@@ -482,10 +482,10 @@ public final class CashOperationHandler extends AbstractMaplePacketHandler {
         cal.set(year, month - 1, day);
         return c.checkBirthDate(cal);
     }
-    
-    private static boolean canBuy(MapleCharacter chr, CashItem item, int cash) {
+
+    private static boolean canBuy(Character chr, CashItem item, int cash) {
         if (item != null && item.isOnSale() && item.getPrice() <= cash) {
-            FilePrinter.print(FilePrinter.CASHITEM_BOUGHT, chr + " bought " + MapleItemInformationProvider.getInstance().getName(item.getItemId()) + " (SN " + item.getSN() + ") for " + item.getPrice());
+            log.debug("Chr {} bought cash item {} (SN {}) for {}", chr, ItemInformationProvider.getInstance().getName(item.getItemId()), item.getSN(), item.getPrice());
             return true;
         } else {
             return false;

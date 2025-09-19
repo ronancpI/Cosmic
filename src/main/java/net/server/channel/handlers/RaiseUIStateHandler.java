@@ -1,36 +1,35 @@
 package net.server.channel.handlers;
 
-import client.MapleCharacter.DelayedQuestUpdate;
-import client.MapleCharacter;
-import client.MapleClient;
-import client.MapleQuestStatus;
-import net.AbstractMaplePacketHandler;
+import client.Character;
+import client.Character.DelayedQuestUpdate;
+import client.Client;
+import client.QuestStatus;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import scripting.quest.QuestScriptManager;
-import server.quest.MapleQuest;
-import tools.data.input.SeekableLittleEndianAccessor;
+import server.quest.Quest;
 
 /**
- *
  * @author Xari
  */
-public class RaiseUIStateHandler extends AbstractMaplePacketHandler {
+public class RaiseUIStateHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int infoNumber = slea.readShort();
-        
+    public final void handlePacket(InPacket p, Client c) {
+        int infoNumber = p.readShort();
+
         if (c.tryacquireClient()) {
             try {
-                MapleCharacter chr = c.getPlayer();
-                MapleQuest quest = MapleQuest.getInstanceFromInfoNumber(infoNumber);
-                MapleQuestStatus mqs = chr.getQuest(quest);
-                
+                Character chr = c.getPlayer();
+                Quest quest = Quest.getInstanceFromInfoNumber(infoNumber);
+                QuestStatus mqs = chr.getQuest(quest);
+
                 QuestScriptManager.getInstance().raiseOpen(c, (short) infoNumber, mqs.getNpc());
-                
-                if (mqs.getStatus() == MapleQuestStatus.Status.NOT_STARTED) {
+
+                if (mqs.getStatus() == QuestStatus.Status.NOT_STARTED) {
                     quest.forceStart(chr, 22000);
                     c.getAbstractPlayerInteraction().setQuestProgress(quest.getId(), infoNumber, 0);
-                } else if (mqs.getStatus() == MapleQuestStatus.Status.STARTED) {
+                } else if (mqs.getStatus() == QuestStatus.Status.STARTED) {
                     chr.announceUpdateQuest(DelayedQuestUpdate.UPDATE, mqs, mqs.getInfoNumber() > 0);
                 }
             } finally {

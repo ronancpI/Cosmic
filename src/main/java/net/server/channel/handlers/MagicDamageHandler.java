@@ -21,25 +21,28 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleBuffStat;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.BuffStat;
+import client.Character;
+import client.Client;
 import client.Skill;
 import client.SkillFactory;
 import config.YamlConfig;
-import constants.game.GameConstants;
+import constants.id.MapId;
 import constants.skills.Bishop;
 import constants.skills.Evan;
 import constants.skills.FPArchMage;
 import constants.skills.ILArchMage;
-import server.MapleStatEffect;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.packet.InPacket;
+import net.packet.Packet;
+import server.StatEffect;
+import tools.PacketCreator;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public final class MagicDamageHandler extends AbstractDealDamageHandler {
-	@Override
-	public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-		MapleCharacter chr = c.getPlayer();
+    @Override
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
 
 		/*long timeElapsed = currentServerTime() - chr.getAutobanManager().getLastSpam(8);
 		if(timeElapsed < 300) {
@@ -47,43 +50,44 @@ public final class MagicDamageHandler extends AbstractDealDamageHandler {
 		}
 		chr.getAutobanManager().spam(8);*/
 
-		AttackInfo attack = parseDamage(slea, chr, false, true);
-                
-		if (chr.getBuffEffect(MapleBuffStat.MORPH) != null) {
-			if(chr.getBuffEffect(MapleBuffStat.MORPH).isMorphWithoutAttack()) {
-				// How are they attacking when the client won't let them?
-				chr.getClient().disconnect(false, false);
-				return; 
-			}
-		}
-                
-                if (GameConstants.isDojo(chr.getMap().getId()) && attack.numAttacked > 0) {
-                        chr.setDojoEnergy(chr.getDojoEnergy() +  + YamlConfig.config.server.DOJO_ENERGY_ATK);
-                        c.announce(MaplePacketCreator.getEnergy("energy", chr.getDojoEnergy()));
-                }
+        AttackInfo attack = parseDamage(p, chr, false, true);
 
-                int charge = (attack.skill == Evan.FIRE_BREATH || attack.skill == Evan.ICE_BREATH || attack.skill == FPArchMage.BIG_BANG || attack.skill == ILArchMage.BIG_BANG || attack.skill == Bishop.BIG_BANG) ? attack.charge : -1;
-                byte[] packet = MaplePacketCreator.magicAttack(chr, attack.skill, attack.skilllevel, attack.stance, attack.numAttackedAndDamage, attack.allDamage, charge, attack.speed, attack.direction, attack.display);
-		
-		chr.getMap().broadcastMessage(chr, packet, false, true);
-		MapleStatEffect effect = attack.getAttackEffect(chr, null);
-		Skill skill = SkillFactory.getSkill(attack.skill);
-		MapleStatEffect effect_ = skill.getEffect(chr.getSkillLevel(skill));
-		if (effect_.getCooldown() > 0) {
-			if (chr.skillIsCooling(attack.skill)) {
-				return;
-			} else {
-				c.announce(MaplePacketCreator.skillCooldown(attack.skill, effect_.getCooldown()));
-				chr.addCooldown(attack.skill, currentServerTime(), effect_.getCooldown() * 1000);
-			}
-		}
-		applyAttack(attack, chr, effect.getAttackCount());
-		Skill eaterSkill = SkillFactory.getSkill((chr.getJob().getId() - (chr.getJob().getId() % 10)) * 10000);// MP Eater, works with right job
-		int eaterLevel = chr.getSkillLevel(eaterSkill);
-		if (eaterLevel > 0) {
-			for (Integer singleDamage : attack.allDamage.keySet()) {
-				eaterSkill.getEffect(eaterLevel).applyPassive(chr, chr.getMap().getMapObject(singleDamage), 0);
-			}
-		}
-	}
+        if (chr.getBuffEffect(BuffStat.MORPH) != null) {
+            if (chr.getBuffEffect(BuffStat.MORPH).isMorphWithoutAttack()) {
+                // How are they attacking when the client won't let them?
+                chr.getClient().disconnect(false, false);
+                return;
+            }
+        }
+
+        if (MapId.isDojo(chr.getMap().getId()) && attack.numAttacked > 0) {
+            chr.setDojoEnergy(chr.getDojoEnergy() + +YamlConfig.config.server.DOJO_ENERGY_ATK);
+            c.sendPacket(PacketCreator.getEnergy("energy", chr.getDojoEnergy()));
+        }
+
+        int charge = (attack.skill == Evan.FIRE_BREATH || attack.skill == Evan.ICE_BREATH || attack.skill == FPArchMage.BIG_BANG || attack.skill == ILArchMage.BIG_BANG || attack.skill == Bishop.BIG_BANG) ? attack.charge : -1;
+        Packet packet = PacketCreator.magicAttack(chr, attack.skill, attack.skilllevel, attack.stance,
+                attack.numAttackedAndDamage, attack.targets, charge, attack.speed, attack.direction, attack.display);
+
+        chr.getMap().broadcastMessage(chr, packet, false, true);
+        StatEffect effect = attack.getAttackEffect(chr, null);
+        Skill skill = SkillFactory.getSkill(attack.skill);
+        StatEffect effect_ = skill.getEffect(chr.getSkillLevel(skill));
+        if (effect_.getCooldown() > 0) {
+            if (chr.skillIsCooling(attack.skill)) {
+                return;
+            } else {
+                c.sendPacket(PacketCreator.skillCooldown(attack.skill, effect_.getCooldown()));
+                chr.addCooldown(attack.skill, currentServerTime(), SECONDS.toMillis(effect_.getCooldown()));
+            }
+        }
+        applyAttack(attack, chr, effect.getAttackCount());
+        Skill eaterSkill = SkillFactory.getSkill((chr.getJob().getId() - (chr.getJob().getId() % 10)) * 10000);// MP Eater, works with right job
+        int eaterLevel = chr.getSkillLevel(eaterSkill);
+        if (eaterLevel > 0) {
+            for (Integer oid : attack.targets.keySet()) {
+                eaterSkill.getEffect(eaterLevel).applyPassive(chr, chr.getMap().getMapObject(oid), 0);
+            }
+        }
+    }
 }

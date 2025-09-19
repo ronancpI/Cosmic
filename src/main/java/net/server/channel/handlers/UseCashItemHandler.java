@@ -21,87 +21,120 @@
  */
 package net.server.channel.handlers;
 
-import client.*;
-import client.creator.veteran.*;
-import client.inventory.*;
+import client.Character;
+import client.Client;
+import client.Skill;
+import client.SkillFactory;
+import client.SkillMacro;
+import client.creator.veteran.BowmanCreator;
+import client.creator.veteran.MagicianCreator;
+import client.creator.veteran.PirateCreator;
+import client.creator.veteran.ThiefCreator;
+import client.creator.veteran.WarriorCreator;
+import client.inventory.Equip;
 import client.inventory.Equip.ScrollResult;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import client.inventory.manipulator.MapleKarmaManipulator;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
+import client.inventory.Item;
+import client.inventory.ModifyInventory;
+import client.inventory.Pet;
+import client.inventory.manipulator.InventoryManipulator;
+import client.inventory.manipulator.KarmaManipulator;
 import client.processor.npc.DueyProcessor;
 import client.processor.stat.AssignAPProcessor;
 import client.processor.stat.AssignSPProcessor;
 import config.YamlConfig;
 import constants.game.GameConstants;
+import constants.id.ItemId;
+import constants.id.MapId;
 import constants.inventory.ItemConstants;
-import net.AbstractMaplePacketHandler;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.packet.out.SendNoteSuccessPacket;
 import net.server.Server;
-import server.MapleItemInformationProvider;
-import server.MapleShop;
-import server.MapleShopFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
+import server.Shop;
+import server.ShopFactory;
 import server.TimerManager;
-import server.maps.*;
-import tools.MaplePacketCreator;
+import server.maps.AbstractMapObject;
+import server.maps.FieldLimit;
+import server.maps.Kite;
+import server.maps.MapleMap;
+import server.maps.MapleTVEffect;
+import server.maps.PlayerShopItem;
+import service.NoteService;
+import tools.PacketCreator;
 import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
-public final class UseCashItemHandler extends AbstractMaplePacketHandler {
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
+public final class UseCashItemHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(UseCashItemHandler.class);
+
+    private final NoteService noteService;
+
+    public UseCashItemHandler(NoteService noteService) {
+        this.noteService = noteService;
+    }
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        final MapleCharacter player = c.getPlayer();
-        
+    public void handlePacket(InPacket p, Client c) {
+        final Character player = c.getPlayer();
+
         long timeNow = currentServerTime();
         if (timeNow - player.getLastUsedCashItem() < 3000) {
             player.dropMessage(1, "You have used a cash item recently. Wait a moment, then try again.");
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
         player.setLastUsedCashItem(timeNow);
-        
-        MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-        short position = slea.readShort();
-        int itemId = slea.readInt();
+
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        short position = p.readShort();
+        int itemId = p.readInt();
         int itemType = itemId / 10000;
-        
-        MapleInventory cashInv = player.getInventory(MapleInventoryType.CASH);
+
+        Inventory cashInv = player.getInventory(InventoryType.CASH);
         Item toUse = cashInv.getItem(position);
         if (toUse == null || toUse.getItemId() != itemId) {
             toUse = cashInv.findById(itemId);
-            
+
             if (toUse == null) {
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
+
             position = toUse.getPosition();
         }
-        
+
         if (toUse.getQuantity() < 1) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
-        
+
         String medal = "";
-        Item medalItem = player.getInventory(MapleInventoryType.EQUIPPED).getItem((short) -49);
+        Item medalItem = player.getInventory(InventoryType.EQUIPPED).getItem((short) -49);
         if (medalItem != null) {
             medal = "<" + ii.getName(medalItem.getItemId()) + "> ";
         }
-        
+
         if (itemType == 504) { // vip teleport rock
             String error1 = "Either the player could not be found or you were trying to teleport to an illegal location.";
-            boolean vip = slea.readByte() == 1 && itemId / 1000 >= 5041;
+            boolean vip = p.readByte() == 1 && itemId / 1000 >= 5041;
             remove(c, position, itemId);
             boolean success = false;
             if (!vip) {
-                int mapId = slea.readInt();
+                int mapId = p.readInt();
                 if (itemId / 1000 >= 5041 || mapId / 100000000 == player.getMapId() / 100000000) { //check vip or same continent
                     MapleMap targetMap = c.getChannelServer().getMapFactory().getMap(mapId);
-                    if (!FieldLimit.CANNOTVIPROCK.check(targetMap.getFieldLimit()) && (targetMap.getForcedReturnId() == 999999999 || mapId < 100000000)) {
+                    if (!FieldLimit.CANNOTVIPROCK.check(targetMap.getFieldLimit()) && (targetMap.getForcedReturnId() == MapId.NONE || MapId.isMapleIsland(mapId))) {
                         player.forceChangeMap(targetMap, targetMap.getRandomPlayerSpawnpoint());
                         success = true;
                     } else {
@@ -111,12 +144,12 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
                     player.dropMessage(1, "You cannot teleport between continents with this teleport rock.");
                 }
             } else {
-                String name = slea.readMapleAsciiString();
-                MapleCharacter victim = c.getChannelServer().getPlayerStorage().getCharacterByName(name);
-                
+                String name = p.readString();
+                Character victim = c.getChannelServer().getPlayerStorage().getCharacterByName(name);
+
                 if (victim != null) {
                     MapleMap targetMap = victim.getMap();
-                    if (!FieldLimit.CANNOTVIPROCK.check(targetMap.getFieldLimit()) && (targetMap.getForcedReturnId() == 999999999 || targetMap.getId() < 100000000)) {
+                    if (!FieldLimit.CANNOTVIPROCK.check(targetMap.getFieldLimit()) && (targetMap.getForcedReturnId() == MapId.NONE || MapId.isMapleIsland(targetMap.getId()))) {
                         if (!victim.isGM() || victim.gmLevel() <= player.gmLevel()) {   // thanks Yoboes for noticing non-GM's being unreachable through rocks
                             player.forceChangeMap(targetMap, targetMap.findClosestPlayerSpawnpoint(victim.getPosition()));
                             success = true;
@@ -130,24 +163,24 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
                     player.dropMessage(1, "Player could not be found in this channel.");
                 }
             }
-            
+
             if (!success) {
-                MapleInventoryManipulator.addById(c, itemId, (short) 1);
-                c.announce(MaplePacketCreator.enableActions());
+                InventoryManipulator.addById(c, itemId, (short) 1);
+                c.sendPacket(PacketCreator.enableActions());
             }
         } else if (itemType == 505) { // AP/SP reset
-            if(!player.isAlive()) {
-                c.announce(MaplePacketCreator.enableActions());
+            if (!player.isAlive()) {
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
-            if (itemId > 5050000) {
-                int SPTo = slea.readInt();
+
+            if (itemId > ItemId.AP_RESET) {
+                int SPTo = p.readInt();
                 if (!AssignSPProcessor.canSPAssign(c, SPTo)) {  // exploit found thanks to Arnah
                     return;
                 }
-                
-                int SPFrom = slea.readInt();
+
+                int SPFrom = p.readInt();
                 Skill skillSPTo = SkillFactory.getSkill(SPTo);
                 Skill skillSPFrom = SkillFactory.getSkill(SPFrom);
                 byte curLevel = player.getSkillLevel(skillSPTo);
@@ -155,39 +188,43 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
                 if ((curLevel < skillSPTo.getMaxLevel()) && curLevelSPFrom > 0) {
                     player.changeSkillLevel(skillSPFrom, (byte) (curLevelSPFrom - 1), player.getMasterLevel(skillSPFrom), -1);
                     player.changeSkillLevel(skillSPTo, (byte) (curLevel + 1), player.getMasterLevel(skillSPTo), -1);
-                    
+
                     // update macros, thanks to Arnah
-                    if((curLevelSPFrom - 1) == 0){
+                    if ((curLevelSPFrom - 1) == 0) {
                         boolean updated = false;
-                        for(SkillMacro macro : player.getMacros()){
-                            if(macro == null) continue;
-                            
+                        for (SkillMacro macro : player.getMacros()) {
+                            if (macro == null) {
+                                continue;
+                            }
+
                             boolean update = false;// cleaner?
-                            if(macro.getSkill1() == SPFrom){
+                            if (macro.getSkill1() == SPFrom) {
                                 update = true;
                                 macro.setSkill1(0);
                             }
-                            if(macro.getSkill2() == SPFrom){
+                            if (macro.getSkill2() == SPFrom) {
                                 update = true;
                                 macro.setSkill2(0);
                             }
-                            if(macro.getSkill3() == SPFrom){
+                            if (macro.getSkill3() == SPFrom) {
                                 update = true;
                                 macro.setSkill3(0);
                             }
-                            if(update){
+                            if (update) {
                                 updated = true;
                                 player.updateMacros(macro.getPosition(), macro);
                             }
                         }
-                        if(updated) player.sendMacros();
+                        if (updated) {
+                            player.sendMacros();
+                        }
                     }
                 }
             } else {
-                int APTo = slea.readInt();
-                int APFrom = slea.readInt();
-                
-                if(!AssignAPProcessor.APResetAction(c, APFrom, APTo)) {
+                int APTo = p.readInt();
+                int APFrom = p.readInt();
+
+                if (!AssignAPProcessor.APResetAction(c, APFrom, APTo)) {
                     return;
                 }
             }
@@ -195,23 +232,23 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
         } else if (itemType == 506) {
             Item eq = null;
             if (itemId == 5060000) { // Item tag.
-                int equipSlot = slea.readShort();
+                int equipSlot = p.readShort();
                 if (equipSlot == 0) {
                     return;
                 }
-                eq = player.getInventory(MapleInventoryType.EQUIPPED).getItem((short) equipSlot);
+                eq = player.getInventory(InventoryType.EQUIPPED).getItem((short) equipSlot);
                 eq.setOwner(player.getName());
             } else if (itemId == 5060001 || itemId == 5061000 || itemId == 5061001 || itemId == 5061002 || itemId == 5061003) { // Sealing lock
-                MapleInventoryType type = MapleInventoryType.getByType((byte) slea.readInt());
-                eq = player.getInventory(type).getItem((short) slea.readInt());
+                InventoryType type = InventoryType.getByType((byte) p.readInt());
+                eq = player.getInventory(type).getItem((short) p.readInt());
                 if (eq == null) { //Check if the type is EQUIPMENT?
                     return;
                 }
                 short flag = eq.getFlag();
-                flag |= ItemConstants.LOCK;
-                if (eq.getExpiration() > -1) {
+                if (eq.getExpiration() > -1 && (eq.getFlag() & ItemConstants.LOCK) != ItemConstants.LOCK) {
                     return; //No perma items pls
                 }
+                flag |= ItemConstants.LOCK;
                 eq.setFlag(flag);
 
                 long period = 0;
@@ -226,25 +263,26 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
                 }
 
                 if (period > 0) {
-                    eq.setExpiration(currentServerTime() + (period * 60 * 60 * 24 * 1000));
+                    long expiration = eq.getExpiration() > -1 ? eq.getExpiration() : currentServerTime();
+                    eq.setExpiration(expiration + DAYS.toMillis(period));
                 }
 
                 // double-remove found thanks to BHB
             } else if (itemId == 5060002) { // Incubator
-                byte inventory2 = (byte) slea.readInt();
-                short slot2 = (short) slea.readInt();
-                Item item2 = player.getInventory(MapleInventoryType.getByType(inventory2)).getItem(slot2);
+                byte inventory2 = (byte) p.readInt();
+                short slot2 = (short) p.readInt();
+                Item item2 = player.getInventory(InventoryType.getByType(inventory2)).getItem(slot2);
                 if (item2 == null) // hacking
                 {
                     return;
                 }
                 if (getIncubatedItem(c, itemId)) {
-                    MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.getByType(inventory2), slot2, (short) 1, false);
+                    InventoryManipulator.removeFromSlot(c, InventoryType.getByType(inventory2), slot2, (short) 1, false);
                     remove(c, position, itemId);
                 }
                 return;
             }
-            slea.readInt(); // time stamp
+            p.readInt(); // time stamp
             if (eq != null) {
                 player.forceUpdateItem(eq);
                 remove(c, position, itemId);
@@ -254,154 +292,158 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
             switch ((itemId / 1000) % 10) {
                 case 1: // Megaphone
                     if (player.getLevel() > 9) {
-                        player.getClient().getChannelServer().broadcastPacket(MaplePacketCreator.serverNotice(2, medal + player.getName() + " : " + slea.readMapleAsciiString()));
+                        player.getClient().getChannelServer().broadcastPacket(PacketCreator.serverNotice(2, medal + player.getName() + " : " + p.readString()));
                     } else {
                         player.dropMessage(1, "You may not use this until you're level 10.");
                         return;
                     }
                     break;
                 case 2: // Super megaphone
-                    Server.getInstance().broadcastMessage(c.getWorld(), MaplePacketCreator.serverNotice(3, c.getChannel(), medal + player.getName() + " : " + slea.readMapleAsciiString(), (slea.readByte() != 0)));
+                    Server.getInstance().broadcastMessage(c.getWorld(), PacketCreator.serverNotice(3, c.getChannel(), medal + player.getName() + " : " + p.readString(), (p.readByte() != 0)));
                     break;
                 case 5: // Maple TV
                     int tvType = itemId % 10;
                     boolean megassenger = false;
                     boolean ear = false;
-                    MapleCharacter victim = null;
+                    Character victim = null;
                     if (tvType != 1) {
                         if (tvType >= 3) {
                             megassenger = true;
                             if (tvType == 3) {
-                                slea.readByte();
+                                p.readByte();
                             }
-                            ear = 1 == slea.readByte();
+                            ear = 1 == p.readByte();
                         } else if (tvType != 2) {
-                            slea.readByte();
+                            p.readByte();
                         }
                         if (tvType != 4) {
-                            victim = c.getChannelServer().getPlayerStorage().getCharacterByName(slea.readMapleAsciiString());
+                            victim = c.getChannelServer().getPlayerStorage().getCharacterByName(p.readString());
                         }
                     }
                     List<String> messages = new LinkedList<>();
                     StringBuilder builder = new StringBuilder();
                     for (int i = 0; i < 5; i++) {
-                        String message = slea.readMapleAsciiString();
+                        String message = p.readString();
                         if (megassenger) {
                             builder.append(" ").append(message);
                         }
                         messages.add(message);
                     }
-                    slea.readInt();
-                    
+                    p.readInt();
+
                     if (!MapleTVEffect.broadcastMapleTVIfNotActive(player, victim, messages, tvType)) {
                         player.dropMessage(1, "MapleTV is already in use.");
                         return;
                     }
-                    
+
                     if (megassenger) {
-                        Server.getInstance().broadcastMessage(c.getWorld(), MaplePacketCreator.serverNotice(3, c.getChannel(), medal + player.getName() + " : " + builder.toString(), ear));
+                        Server.getInstance().broadcastMessage(c.getWorld(), PacketCreator.serverNotice(3, c.getChannel(), medal + player.getName() + " : " + builder, ear));
                     }
-                    
+
                     break;
                 case 6: //item megaphone
-                    String msg = medal + player.getName() + " : " + slea.readMapleAsciiString();
-                    whisper = slea.readByte() == 1;
+                    String msg = medal + player.getName() + " : " + p.readString();
+                    whisper = p.readByte() == 1;
                     Item item = null;
-                    if (slea.readByte() == 1) { //item
-                        item = player.getInventory(MapleInventoryType.getByType((byte) slea.readInt())).getItem((short) slea.readInt());
+                    if (p.readByte() == 1) { //item
+                        item = player.getInventory(InventoryType.getByType((byte) p.readInt())).getItem((short) p.readInt());
                         if (item == null) //hack
                         {
                             return;
                         }
-                        
+
                         // thanks Conrad for noticing that untradeable items should be allowed in megas
                     }
-                    Server.getInstance().broadcastMessage(c.getWorld(), MaplePacketCreator.itemMegaphone(msg, whisper, c.getChannel(), item));
+                    Server.getInstance().broadcastMessage(c.getWorld(), PacketCreator.itemMegaphone(msg, whisper, c.getChannel(), item));
                     break;
                 case 7: //triple megaphone
-                    int lines = slea.readByte();
+                    int lines = p.readByte();
                     if (lines < 1 || lines > 3) //hack
                     {
                         return;
                     }
                     String[] msg2 = new String[lines];
                     for (int i = 0; i < lines; i++) {
-                        msg2[i] = medal + player.getName() + " : " + slea.readMapleAsciiString();
+                        msg2[i] = medal + player.getName() + " : " + p.readString();
                     }
-                    whisper = slea.readByte() == 1;
-                    Server.getInstance().broadcastMessage(c.getWorld(), MaplePacketCreator.getMultiMegaphone(msg2, c.getChannel(), whisper));
+                    whisper = p.readByte() == 1;
+                    Server.getInstance().broadcastMessage(c.getWorld(), PacketCreator.getMultiMegaphone(msg2, c.getChannel(), whisper));
                     break;
             }
             remove(c, position, itemId);
         } else if (itemType == 508) {   // thanks tmskdl12 for graduation banner; thanks ratency for first pointing lack of Kite handling
-            MapleKite kite = new MapleKite(player, slea.readMapleAsciiString(), itemId);
-            
+            Kite kite = new Kite(player, p.readString(), itemId);
+
             if (!GameConstants.isFreeMarketRoom(player.getMapId())) {
                 player.getMap().spawnKite(kite);
                 remove(c, position, itemId);
             } else {
-                c.announce(MaplePacketCreator.sendCannotSpawnKite());
+                c.sendPacket(PacketCreator.sendCannotSpawnKite());
             }
         } else if (itemType == 509) {
-            String sendTo = slea.readMapleAsciiString();
-            String msg = slea.readMapleAsciiString();
-            try {
-                player.sendNote(sendTo, msg, (byte) 0);
-            } catch (SQLException e) {
-                e.printStackTrace();
+            String sendTo = p.readString();
+            String msg = p.readString();
+            boolean sendSuccess = noteService.sendNormal(msg, player.getName(), sendTo);
+            if (sendSuccess) {
+                remove(c, position, itemId);
+                c.sendPacket(new SendNoteSuccessPacket());
             }
-            remove(c, position, itemId);
         } else if (itemType == 510) {
-            player.getMap().broadcastMessage(MaplePacketCreator.musicChange("Jukebox/Congratulation"));
+            player.getMap().broadcastMessage(PacketCreator.musicChange("Jukebox/Congratulation"));
             remove(c, position, itemId);
         } else if (itemType == 512) {
             if (ii.getStateChangeItem(itemId) != 0) {
-                for (MapleCharacter mChar : player.getMap().getCharacters()) {
+                for (Character mChar : player.getMap().getCharacters()) {
                     ii.getItemEffect(ii.getStateChangeItem(itemId)).applyTo(mChar);
                 }
             }
-            player.getMap().startMapEffect(ii.getMsg(itemId).replaceFirst("%s", player.getName()).replaceFirst("%s", slea.readMapleAsciiString()), itemId);
+            player.getMap().startMapEffect(ii.getMsg(itemId).replaceFirst("%s", player.getName()).replaceFirst("%s", p.readString()), itemId);
             remove(c, position, itemId);
         } else if (itemType == 517) {
-            MaplePet pet = player.getPet(0);
+            Pet pet = player.getPet(0);
             if (pet == null) {
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            String newName = slea.readMapleAsciiString();
+            String newName = p.readString();
             pet.setName(newName);
             pet.saveToDb();
-            
-            Item item = player.getInventory(MapleInventoryType.CASH).getItem(pet.getPosition());
-            if (item != null)
+
+            Item item = player.getInventory(InventoryType.CASH).getItem(pet.getPosition());
+            if (item != null) {
                 player.forceUpdateItem(item);
-            
-            player.getMap().broadcastMessage(player, MaplePacketCreator.changePetName(player, newName, 1), true);
-            c.announce(MaplePacketCreator.enableActions());
+            }
+
+            player.getMap().broadcastMessage(player, PacketCreator.changePetName(player, newName, 1), true);
+            c.sendPacket(PacketCreator.enableActions());
             remove(c, position, itemId);
         } else if (itemType == 520) {
             player.gainMeso(ii.getMeso(itemId), true, false, true);
             remove(c, position, itemId);
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         } else if (itemType == 523) {
-            int itemid = slea.readInt();
-            
-            if(!YamlConfig.config.server.USE_ENFORCE_ITEM_SUGGESTION) c.getWorldServer().addOwlItemSearch(itemid);
+            int itemid = p.readInt();
+
+            if (!YamlConfig.config.server.USE_ENFORCE_ITEM_SUGGESTION) {
+                c.getWorldServer().addOwlItemSearch(itemid);
+            }
             player.setOwlSearch(itemid);
-            List<Pair<MaplePlayerShopItem, AbstractMapleMapObject>> hmsAvailable = c.getWorldServer().getAvailableItemBundles(itemid);
-            if(!hmsAvailable.isEmpty()) remove(c, position, itemId);
-            
-            c.announce(MaplePacketCreator.owlOfMinerva(c, itemid, hmsAvailable));
-            c.announce(MaplePacketCreator.enableActions());
-            
+            List<Pair<PlayerShopItem, AbstractMapObject>> hmsAvailable = c.getWorldServer().getAvailableItemBundles(itemid);
+            if (!hmsAvailable.isEmpty()) {
+                remove(c, position, itemId);
+            }
+
+            c.sendPacket(PacketCreator.owlOfMinerva(c, itemid, hmsAvailable));
+            c.sendPacket(PacketCreator.enableActions());
+
         } else if (itemType == 524) {
             for (byte i = 0; i < 3; i++) {
-                MaplePet pet = player.getPet(i);
+                Pet pet = player.getPet(i);
                 if (pet != null) {
-                    Pair<Integer, Boolean> p = pet.canConsume(itemId);
-                    
-                    if (p.getRight()) {
-                        pet.gainClosenessFullness(player, p.getLeft(), 100, 1);
+                    Pair<Integer, Boolean> pair = pet.canConsume(itemId);
+
+                    if (pair.getRight()) {
+                        pet.gainTamenessFullness(player, pair.getLeft(), 100, 1, true);
                         remove(c, position, itemId);
                         break;
                     }
@@ -409,7 +451,7 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
                     break;
                 }
             }
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         } else if (itemType == 530) {
             ii.getItemEffect(itemId).applyTo(player);
             remove(c, position, itemId);
@@ -418,191 +460,181 @@ public final class UseCashItemHandler extends AbstractMaplePacketHandler {
         } else if (itemType == 537) {
             if (GameConstants.isFreeMarketRoom(player.getMapId())) {
                 player.dropMessage(5, "You cannot use the chalkboard here.");
-                player.getClient().announce(MaplePacketCreator.enableActions());
+                player.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
-            player.setChalkboard(slea.readMapleAsciiString());
-            player.getMap().broadcastMessage(MaplePacketCreator.useChalkboard(player, false));
-            player.getClient().announce(MaplePacketCreator.enableActions());
+
+            player.setChalkboard(p.readString());
+            player.getMap().broadcastMessage(PacketCreator.useChalkboard(player, false));
+            player.sendPacket(PacketCreator.enableActions());
             //remove(c, position, itemId);  thanks Conrad for noticing chalkboards shouldn't be depleted upon use
         } else if (itemType == 539) {
             List<String> strLines = new LinkedList<>();
             for (int i = 0; i < 4; i++) {
-                strLines.add(slea.readMapleAsciiString());
+                strLines.add(p.readString());
             }
-            
+
             final int world = c.getWorld();
-            Server.getInstance().broadcastMessage(world, MaplePacketCreator.getAvatarMega(player, medal, c.getChannel(), itemId, strLines, (slea.readByte() != 0)));
-            TimerManager.getInstance().schedule(() -> Server.getInstance().broadcastMessage(world, MaplePacketCreator.byeAvatarMega()), 1000 * 10);
+            Server.getInstance().broadcastMessage(world, PacketCreator.getAvatarMega(player, medal, c.getChannel(), itemId, strLines, (p.readByte() != 0)));
+            TimerManager.getInstance().schedule(() -> Server.getInstance().broadcastMessage(world, PacketCreator.byeAvatarMega()), SECONDS.toMillis(10));
             remove(c, position, itemId);
         } else if (itemType == 540) {
-            slea.readByte();
-            slea.readInt();
-            if(itemId == 5400000) { //name change
-                c.announce(MaplePacketCreator.showNameChangeCancel(player.cancelPendingNameChange()));
-            } else if(itemId == 5401000) { //world transfer
-                c.announce(MaplePacketCreator.showWorldTransferCancel(player.cancelPendingWorldTranfer()));
+            p.readByte();
+            p.readInt();
+            if (itemId == ItemId.NAME_CHANGE) {
+                c.sendPacket(PacketCreator.showNameChangeCancel(player.cancelPendingNameChange()));
+            } else if (itemId == ItemId.WORLD_TRANSFER) {
+                c.sendPacket(PacketCreator.showWorldTransferCancel(player.cancelPendingWorldTranfer()));
             }
             remove(c, position, itemId);
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         } else if (itemType == 543) {
-            if(itemId == 5432000 && !c.gainCharacterSlot()) {
+            if (itemId == ItemId.MAPLE_LIFE_B && !c.gainCharacterSlot()) {
                 player.dropMessage(1, "You have already used up all 12 extra character slots.");
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
-            String name = slea.readMapleAsciiString();
-            int face = slea.readInt();
-            int hair = slea.readInt();
-            int haircolor = slea.readInt();
-            int skin = slea.readInt();
-            int gender = slea.readInt();
-            int jobid = slea.readInt();
-            int improveSp = slea.readInt();
-            
-            int createStatus;
-            switch(jobid) {
-                case 0:
-                    createStatus = WarriorCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
-                    break;
-                    
-                case 1:
-                    createStatus = MagicianCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
-                    break;
-                    
-                case 2:
-                    createStatus = BowmanCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
-                    break;
-                    
-                case 3:
-                    createStatus = ThiefCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
-                    break;
-                    
-                default:
-                    createStatus = PirateCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
-            }
-            
-            if(createStatus == 0) {
-                c.announce(MaplePacketCreator.sendMapleLifeError(0));   // success!
-                
+
+            String name = p.readString();
+            int face = p.readInt();
+            int hair = p.readInt();
+            int haircolor = p.readInt();
+            int skin = p.readInt();
+            int gender = p.readInt();
+            int jobid = p.readInt();
+            int improveSp = p.readInt();
+
+            int createStatus = switch (jobid) {
+                case 0 -> WarriorCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
+                case 1 -> MagicianCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
+                case 2 -> BowmanCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
+                case 3 -> ThiefCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
+                default -> PirateCreator.createCharacter(c, name, face, hair + haircolor, skin, gender, improveSp);
+            };
+
+            if (createStatus == 0) {
+                c.sendPacket(PacketCreator.sendMapleLifeError(0));   // success!
+
                 player.showHint("#bSuccess#k on creation of the new character through the Maple Life card.");
                 remove(c, position, itemId);
             } else {
-                if(createStatus == -1) {    // check name
-                    c.announce(MaplePacketCreator.sendMapleLifeNameError());
+                if (createStatus == -1) {    // check name
+                    c.sendPacket(PacketCreator.sendMapleLifeNameError());
                 } else {
-                    c.announce(MaplePacketCreator.sendMapleLifeError(-1 * createStatus));
+                    c.sendPacket(PacketCreator.sendMapleLifeError(-1 * createStatus));
                 }
             }
         } else if (itemType == 545) { // MiuMiu's travel store
             if (player.getShop() == null) {
-                MapleShop shop = MapleShopFactory.getInstance().getShop(1338);
+                Shop shop = ShopFactory.getInstance().getShop(1338);
                 if (shop != null) {
                     shop.sendShop(c);
                     remove(c, position, itemId);
                 }
             } else {
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
             }
         } else if (itemType == 550) { //Extend item expiration
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         } else if (itemType == 552) {
-            MapleInventoryType type = MapleInventoryType.getByType((byte) slea.readInt());
-            short slot = (short) slea.readInt();
+            InventoryType type = InventoryType.getByType((byte) p.readInt());
+            short slot = (short) p.readInt();
             Item item = player.getInventory(type).getItem(slot);
-            if (item == null || item.getQuantity() <= 0 || MapleKarmaManipulator.hasKarmaFlag(item) || !ii.isKarmaAble(item.getItemId())) {
-                c.announce(MaplePacketCreator.enableActions());
+            if (item == null || item.getQuantity() <= 0 || KarmaManipulator.hasKarmaFlag(item) || !ii.isKarmaAble(item.getItemId())) {
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
-            MapleKarmaManipulator.setKarmaFlag(item);
+
+            KarmaManipulator.setKarmaFlag(item);
             player.forceUpdateItem(item);
             remove(c, position, itemId);
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         } else if (itemType == 552) { //DS EGG THING
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         } else if (itemType == 557) {
-            slea.readInt();
-            int itemSlot = slea.readInt();
-            slea.readInt();
-            final Equip equip = (Equip) player.getInventory(MapleInventoryType.EQUIP).getItem((short) itemSlot);
-            if (equip.getVicious() >= 2 || player.getInventory(MapleInventoryType.CASH).findById(5570000) == null) {
+            p.readInt();
+            int itemSlot = p.readInt();
+            p.readInt();
+            final Equip equip = (Equip) player.getInventory(InventoryType.EQUIP).getItem((short) itemSlot);
+            if (equip.getVicious() >= 2 || player.getInventory(InventoryType.CASH).findById(ItemId.VICIOUS_HAMMER) == null) {
                 return;
             }
             equip.setVicious(equip.getVicious() + 1);
             equip.setUpgradeSlots(equip.getUpgradeSlots() + 1);
             remove(c, position, itemId);
-            c.announce(MaplePacketCreator.enableActions());
-            c.announce(MaplePacketCreator.sendHammerData(equip.getVicious()));
+            c.sendPacket(PacketCreator.enableActions());
+            c.sendPacket(PacketCreator.sendHammerData(equip.getVicious()));
             player.forceUpdateItem(equip);
         } else if (itemType == 561) { //VEGA'S SPELL
-            if (slea.readInt() != 1) {
+            if (p.readInt() != 1) {
                 return;
             }
-            
-            final byte eSlot = (byte) slea.readInt();
-            final Item eitem = player.getInventory(MapleInventoryType.EQUIP).getItem(eSlot);
-            
-            if (slea.readInt() != 2) {
+
+            final byte eSlot = (byte) p.readInt();
+            final Item eitem = player.getInventory(InventoryType.EQUIP).getItem(eSlot);
+
+            if (p.readInt() != 2) {
                 return;
             }
-            
-            final byte uSlot = (byte) slea.readInt();
-            final Item uitem = player.getInventory(MapleInventoryType.USE).getItem(uSlot);
+
+            final byte uSlot = (byte) p.readInt();
+            final Item uitem = player.getInventory(InventoryType.USE).getItem(uSlot);
             if (eitem == null || uitem == null) {
                 return;
             }
-            
+
             Equip toScroll = (Equip) eitem;
             if (toScroll.getUpgradeSlots() < 1) {
-                c.announce(MaplePacketCreator.getInventoryFull());
+                c.sendPacket(PacketCreator.getInventoryFull());
                 return;
             }
-            
+
             //should have a check here against PE hacks
-            if(itemId / 1000000 != 5) itemId = 0;
-            
+            if (itemId / 1000000 != 5) {
+                itemId = 0;
+            }
+
             player.toggleBlockCashShop();
-            
+
             final int curlevel = toScroll.getLevel();
-            c.announce(MaplePacketCreator.sendVegaScroll(0x40));
-            
+            c.sendPacket(PacketCreator.sendVegaScroll(0x40));
+
             final Equip scrolled = (Equip) ii.scrollEquipWithId(toScroll, uitem.getItemId(), false, itemId, player.isGM());
-            c.announce(MaplePacketCreator.sendVegaScroll(scrolled.getLevel() > curlevel ? 0x41 : 0x43));
+            c.sendPacket(PacketCreator.sendVegaScroll(scrolled.getLevel() > curlevel ? 0x41 : 0x43));
             //opcodes 0x42, 0x44: "this item cannot be used"; 0x39, 0x45: crashes
-            
-            MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.USE, uSlot, (short) 1, false);
+
+            InventoryManipulator.removeFromSlot(c, InventoryType.USE, uSlot, (short) 1, false);
             remove(c, position, itemId);
-            
-            final MapleClient client = c;
+
+            final Client client = c;
             TimerManager.getInstance().schedule(() -> {
-if(!player.isLoggedin()) return;
+                if (!player.isLoggedin()) {
+                    return;
+                }
 
-player.toggleBlockCashShop();
+                player.toggleBlockCashShop();
 
-final List<ModifyInventory> mods = new ArrayList<>();
-mods.add(new ModifyInventory(3, scrolled));
-mods.add(new ModifyInventory(0, scrolled));
-client.announce(MaplePacketCreator.modifyInventory(true, mods));
+                final List<ModifyInventory> mods = new ArrayList<>();
+                mods.add(new ModifyInventory(3, scrolled));
+                mods.add(new ModifyInventory(0, scrolled));
+                client.sendPacket(PacketCreator.modifyInventory(true, mods));
 
-ScrollResult scrollResult = scrolled.getLevel() > curlevel ? ScrollResult.SUCCESS : ScrollResult.FAIL;
-player.getMap().broadcastMessage(MaplePacketCreator.getScrollEffect(player.getId(), scrollResult, false, false));
-if (eSlot < 0 && (scrollResult == ScrollResult.SUCCESS)) {
-player.equipChanged();
-}
+                ScrollResult scrollResult = scrolled.getLevel() > curlevel ? ScrollResult.SUCCESS : ScrollResult.FAIL;
+                player.getMap().broadcastMessage(PacketCreator.getScrollEffect(player.getId(), scrollResult, false, false));
+                if (eSlot < 0 && (scrollResult == ScrollResult.SUCCESS)) {
+                    player.equipChanged();
+                }
 
-client.announce(MaplePacketCreator.enableActions());
-            }, 1000 * 3);
+                client.sendPacket(PacketCreator.enableActions());
+            }, SECONDS.toMillis(3));
         } else {
-            System.out.println("NEW CASH ITEM: " + itemType + "\n" + slea.toString());
-            c.announce(MaplePacketCreator.enableActions());
+            log.warn("NEW CASH ITEM TYPE: {}, packet: {}", itemType, p);
+            c.sendPacket(PacketCreator.enableActions());
         }
     }
 
-    private static void remove(MapleClient c, short position, int itemid) {
-        MapleInventory cashInv = c.getPlayer().getInventory(MapleInventoryType.CASH);
+    private static void remove(Client c, short position, int itemid) {
+        Inventory cashInv = c.getPlayer().getInventory(InventoryType.CASH);
         cashInv.lockInventory();
         try {
             Item it = cashInv.getItem(position);
@@ -612,14 +644,14 @@ client.announce(MaplePacketCreator.enableActions());
                     position = it.getPosition();
                 }
             }
-            
-            MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.CASH, position, (short) 1, true, false);
+
+            InventoryManipulator.removeFromSlot(c, InventoryType.CASH, position, (short) 1, true, false);
         } finally {
             cashInv.unlockInventory();
         }
     }
 
-    private static boolean getIncubatedItem(MapleClient c, int id) {
+    private static boolean getIncubatedItem(Client c, int id) {
         final int[] ids = {1012070, 1302049, 1302063, 1322027, 2000004, 2000005, 2020013, 2020015, 2040307, 2040509, 2040519, 2040521, 2040533, 2040715, 2040717, 2040810, 2040811, 2070005, 2070006, 4020009,};
         final int[] quantitys = {1, 1, 1, 1, 240, 200, 200, 200, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3};
         int amount = 0;
@@ -628,10 +660,10 @@ client.announce(MaplePacketCreator.enableActions());
                 amount = quantitys[i];
             }
         }
-        if (c.getPlayer().getInventory(MapleInventoryType.getByType((byte) (id / 1000000))).isFull()) {
+        if (c.getPlayer().getInventory(InventoryType.getByType((byte) (id / 1000000))).isFull()) {
             return false;
         }
-        MapleInventoryManipulator.addById(c, id, (short) amount);
+        InventoryManipulator.addById(c, id, (short) amount);
         return true;
     }
 }

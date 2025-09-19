@@ -21,19 +21,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package scripting.item;
 
-import client.MapleClient;
+import client.Client;
 import scripting.npc.NPCScriptManager;
-import server.MapleItemInformationProvider.ScriptedItem;
+import server.ItemInformationProvider.ScriptedItem;
 
 public class ItemScriptManager {
 
-    private static ItemScriptManager instance = new ItemScriptManager();
-    
+    private static final ItemScriptManager instance = new ItemScriptManager();
+
     public static ItemScriptManager getInstance() {
         return instance;
     }
-    
-    public void runItemScript(MapleClient c, ScriptedItem scriptItem) {
+
+    public void runItemScript(Client c, ScriptedItem scriptItem) {
         NPCScriptManager.getInstance().start(c, scriptItem, null);
     }
 }

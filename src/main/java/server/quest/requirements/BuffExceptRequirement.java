@@ -18,33 +18,32 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 package server.quest.requirements;
-    
-import client.MapleCharacter;
-import provider.MapleData;
-import provider.MapleDataTool;
-import server.quest.MapleQuest;
-import server.quest.MapleQuestRequirementType;
+
+import client.Character;
+import provider.Data;
+import provider.DataTool;
+import server.quest.Quest;
+import server.quest.QuestRequirementType;
 
 /**
- *
  * @author Ronan
  */
-public class BuffExceptRequirement extends MapleQuestRequirement {
-        private int buffId = -1;
-        
-	public BuffExceptRequirement(MapleQuest quest, MapleData data) {
-		super(MapleQuestRequirementType.BUFF);
-		processData(data);
-	}
-	
-	@Override
-	public void processData(MapleData data) {
-                // item buffs are negative
-		buffId = -1 * Integer.parseInt(MapleDataTool.getString(data));
-	}
-	
-	@Override
-	public boolean check(MapleCharacter chr, Integer npcid) {
-                return !chr.hasBuffFromSourceid(buffId);
-	}
+public class BuffExceptRequirement extends AbstractQuestRequirement {
+    private int buffId = -1;
+
+    public BuffExceptRequirement(Quest quest, Data data) {
+        super(QuestRequirementType.BUFF);
+        processData(data);
+    }
+
+    @Override
+    public void processData(Data data) {
+        // item buffs are negative
+        buffId = -1 * Integer.parseInt(DataTool.getString(data));
+    }
+
+    @Override
+    public boolean check(Character chr, Integer npcid) {
+        return !chr.hasBuffFromSourceid(buffId);
+    }
 }

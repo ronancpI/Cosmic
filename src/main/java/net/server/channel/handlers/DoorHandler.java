@@ -21,41 +21,39 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import server.maps.MapleDoorObject;
-import server.maps.MapleMapObject;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.maps.DoorObject;
+import server.maps.MapObject;
+import tools.PacketCreator;
 
 /**
- *
  * @author Matze
  */
-public final class DoorHandler extends AbstractMaplePacketHandler {
+public final class DoorHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int ownerid = slea.readInt();
-        slea.readByte(); // specifies if backwarp or not, 1 town to target, 0 target to town
-        
-        MapleCharacter chr = c.getPlayer();
+    public final void handlePacket(InPacket p, Client c) {
+        int ownerid = p.readInt();
+        p.readByte(); // specifies if backwarp or not, 1 town to target, 0 target to town
+
+        Character chr = c.getPlayer();
         if (chr.isChangingMaps() || chr.isBanned()) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
-        
-        for (MapleMapObject obj : chr.getMap().getMapObjects()) {
-            if (obj instanceof MapleDoorObject) {
-                MapleDoorObject door = (MapleDoorObject) obj;
+
+        for (MapObject obj : chr.getMap().getMapObjects()) {
+            if (obj instanceof DoorObject door) {
                 if (door.getOwnerId() == ownerid) {
                     door.warp(chr);
                     return;
                 }
             }
         }
-        
-        c.announce(MaplePacketCreator.blockedMessage(6));
-        c.announce(MaplePacketCreator.enableActions());
+
+        c.sendPacket(PacketCreator.blockedMessage(6));
+        c.sendPacket(PacketCreator.enableActions());
     }
 }

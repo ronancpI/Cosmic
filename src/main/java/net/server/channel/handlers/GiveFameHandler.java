@@ -21,33 +21,34 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleCharacter.FameStatus;
+import client.Character;
+import client.Character.FameStatus;
+import client.Client;
 import client.autoban.AutobanFactory;
-import client.MapleClient;
-import client.MapleStat;
-import net.AbstractMaplePacketHandler;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.PacketCreator;
 
-public final class GiveFameHandler extends AbstractMaplePacketHandler {
-    
+public final class GiveFameHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(GiveFameHandler.class);
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter target = (MapleCharacter) c.getPlayer().getMap().getMapObject(slea.readInt());
-        int mode = slea.readByte();
+    public void handlePacket(InPacket p, Client c) {
+        Character target = (Character) c.getPlayer().getMap().getMapObject(p.readInt());
+        int mode = p.readByte();
         int famechange = 2 * mode - 1;
-        MapleCharacter player = c.getPlayer();
+        Character player = c.getPlayer();
         if (target == null || target.getId() == player.getId() || player.getLevel() < 15) {
             return;
         } else if (famechange != 1 && famechange != -1) {
             AutobanFactory.PACKET_EDIT.alert(c.getPlayer(), c.getPlayer().getName() + " tried to packet edit fame.");
-            FilePrinter.printError(FilePrinter.EXPLOITS + c.getPlayer().getName() + ".txt", c.getPlayer().getName() + " tried to fame hack with famechange " + famechange);
+            log.warn("Chr {} tried to fame hack with famechange {}", c.getPlayer().getName(), famechange);
             c.disconnect(true, false);
             return;
         }
-        
+
         FameStatus status = player.canGiveFame(target);
         if (status == FameStatus.OK) {
             if (target.gainFame(famechange, player, mode)) {
@@ -58,7 +59,7 @@ public final class GiveFameHandler extends AbstractMaplePacketHandler {
                 player.message("Could not process the request, since this character currently has the minimum/maximum level of fame.");
             }
         } else {
-            c.announce(MaplePacketCreator.giveFameErrorResponse(status == FameStatus.NOT_TODAY ? 3 : 4));
+            c.sendPacket(PacketCreator.giveFameErrorResponse(status == FameStatus.NOT_TODAY ? 3 : 4));
         }
     }
 }

@@ -1,36 +1,35 @@
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.MapleQuestStatus;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import net.AbstractMaplePacketHandler;
-import server.MapleItemInformationProvider;
-import server.MapleItemInformationProvider.QuestConsItem;
-import server.quest.MapleQuest;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Character;
+import client.Client;
+import client.QuestStatus;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
+import client.inventory.manipulator.InventoryManipulator;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.ItemInformationProvider;
+import server.ItemInformationProvider.QuestConsItem;
+import server.quest.Quest;
+import tools.PacketCreator;
 
 import java.util.Map;
 
 /**
- *
  * @author Xari
  * @author Ronan - added concurrency protection and quest progress limit
  */
-public class RaiseIncExpHandler extends AbstractMaplePacketHandler {
+public class RaiseIncExpHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        byte inventorytype = slea.readByte();//nItemIT
-        short slot = slea.readShort();//nSlotPosition
-        int itemid = slea.readInt();//nItemID
-        
+    public final void handlePacket(InPacket p, Client c) {
+        byte inventorytype = p.readByte();//nItemIT
+        short slot = p.readShort();//nSlotPosition
+        int itemid = p.readInt();//nItemID
+
         if (c.tryacquireClient()) {
             try {
-                MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
+                ItemInformationProvider ii = ItemInformationProvider.getInstance();
                 QuestConsItem consItem = ii.getQuestConsumablesInfo(itemid);
                 if (consItem == null) {
                     return;
@@ -38,16 +37,16 @@ public class RaiseIncExpHandler extends AbstractMaplePacketHandler {
 
                 int infoNumber = consItem.questid;
                 Map<Integer, Integer> consumables = consItem.items;
-                
-                MapleCharacter chr = c.getPlayer();
-                MapleQuest quest = MapleQuest.getInstanceFromInfoNumber(infoNumber);
-                if (!chr.getQuest(quest).getStatus().equals(MapleQuestStatus.Status.STARTED)) {
-                    c.announce(MaplePacketCreator.enableActions());
+
+                Character chr = c.getPlayer();
+                Quest quest = Quest.getInstanceFromInfoNumber(infoNumber);
+                if (!chr.getQuest(quest).getStatus().equals(QuestStatus.Status.STARTED)) {
+                    c.sendPacket(PacketCreator.enableActions());
                     return;
                 }
-                
+
                 int consId;
-                MapleInventory inv = chr.getInventory(MapleInventoryType.getByType(inventorytype));
+                Inventory inv = chr.getInventory(InventoryType.getByType(inventorytype));
                 inv.lockInventory();
                 try {
                     consId = inv.getItem(slot).getItemId();
@@ -55,16 +54,16 @@ public class RaiseIncExpHandler extends AbstractMaplePacketHandler {
                         return;
                     }
 
-                    MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.getByType(inventorytype), slot, (short) 1, false, true);
+                    InventoryManipulator.removeFromSlot(c, InventoryType.getByType(inventorytype), slot, (short) 1, false, true);
                 } finally {
                     inv.unlockInventory();
                 }
-                
+
                 int questid = quest.getId();
                 int nextValue = Math.min(consumables.get(consId) + c.getAbstractPlayerInteraction().getQuestProgressInt(questid, infoNumber), consItem.exp * consItem.grade);
                 c.getAbstractPlayerInteraction().setQuestProgress(questid, infoNumber, nextValue);
-                
-                c.announce(MaplePacketCreator.enableActions());
+
+                c.sendPacket(PacketCreator.enableActions());
             } finally {
                 c.releaseClient();
             }

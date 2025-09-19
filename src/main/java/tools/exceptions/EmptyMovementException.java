@@ -19,17 +19,16 @@
 */
 package tools.exceptions;
 
-import tools.data.input.LittleEndianAccessor;
+import net.packet.InPacket;
 
 
 /**
- *
  * @author Ronan
  */
 public class EmptyMovementException extends Exception {
-    
-    public EmptyMovementException(LittleEndianAccessor lea) {
-        super("Empty movement: " + lea);
+
+    public EmptyMovementException(InPacket inPacket) {
+        super("Empty movement: " + inPacket);
     }
 
 }

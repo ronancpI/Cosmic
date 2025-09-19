@@ -23,15 +23,15 @@
 */
 package client.command.commands.gm4;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import net.server.channel.Channel;
-import server.life.MapleLifeFactory;
-import server.life.MapleNPC;
+import server.life.LifeFactory;
+import server.life.NPC;
 import server.maps.MapleMap;
 import tools.DatabaseConnection;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 import java.awt.*;
 import java.sql.Connection;
@@ -44,8 +44,8 @@ public class PnpcCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !pnpc <npcid>");
             return;
@@ -59,7 +59,7 @@ public class PnpcCommand extends Command {
             return;
         }
 
-        MapleNPC npc = MapleLifeFactory.getNPC(npcId);
+        NPC npc = LifeFactory.getNPC(npcId);
 
         Point checkpos = player.getMap().getGroundBelow(player.getPosition());
         int xpos = checkpos.x;
@@ -85,7 +85,7 @@ public class PnpcCommand extends Command {
                 ps.executeUpdate();
 
                 for (Channel ch : player.getWorldServer().getChannels()) {
-                    npc = MapleLifeFactory.getNPC(npcId);
+                    npc = LifeFactory.getNPC(npcId);
                     npc.setPosition(checkpos);
                     npc.setCy(ypos);
                     npc.setRx0(xpos + 50);
@@ -94,7 +94,7 @@ public class PnpcCommand extends Command {
 
                     MapleMap map = ch.getMapFactory().getMap(mapId);
                     map.addMapObject(npc);
-                    map.broadcastMessage(MaplePacketCreator.spawnNPC(npc));
+                    map.broadcastMessage(PacketCreator.spawnNPC(npc));
                 }
 
                 player.yellowMessage("Pnpc created.");

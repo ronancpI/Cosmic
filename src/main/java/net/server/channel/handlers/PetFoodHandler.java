@@ -21,39 +21,39 @@
  */
 package net.server.channel.handlers;
 
-import net.AbstractMaplePacketHandler;
-import client.MapleCharacter;
-import client.MapleClient;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
-import client.inventory.MaplePet;
+import client.Character;
+import client.Client;
 import client.autoban.AutobanManager;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.manipulator.MapleInventoryManipulator;
+import client.inventory.Pet;
+import client.inventory.manipulator.InventoryManipulator;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import tools.PacketCreator;
 
-public final class PetFoodHandler extends AbstractMaplePacketHandler {
+public final class PetFoodHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
         AutobanManager abm = chr.getAutobanManager();
         if (abm.getLastSpam(2) + 500 > currentServerTime()) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
         abm.spam(2);
-        slea.readInt(); // timestamp issue detected thanks to Masterrulax
+        p.readInt(); // timestamp issue detected thanks to Masterrulax
         abm.setTimestamp(1, Server.getInstance().getCurrentTimestamp(), 3);
         if (chr.getNoPets() == 0) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
         int previousFullness = 100;
         byte slot = 0;
-        MaplePet[] pets = chr.getPets();
+        Pet[] pets = chr.getPets();
         for (byte i = 0; i < 3; i++) {
             if (pets[i] != null) {
                 if (pets[i].getFullness() < previousFullness) {
@@ -62,16 +62,18 @@ public final class PetFoodHandler extends AbstractMaplePacketHandler {
                 }
             }
         }
-        
-        MaplePet pet = chr.getPet(slot);
-        if(pet == null) return;
-        
-        short pos = slea.readShort();
-        int itemId = slea.readInt();
-        
+
+        Pet pet = chr.getPet(slot);
+        if (pet == null) {
+            return;
+        }
+
+        short pos = p.readShort();
+        int itemId = p.readInt();
+
         if (c.tryacquireClient()) {
             try {
-                MapleInventory useInv = chr.getInventory(MapleInventoryType.USE);
+                Inventory useInv = chr.getInventory(InventoryType.USE);
                 useInv.lockInventory();
                 try {
                     Item use = useInv.getItem(pos);
@@ -79,8 +81,8 @@ public final class PetFoodHandler extends AbstractMaplePacketHandler {
                         return;
                     }
 
-                    pet.gainClosenessFullness(chr, (pet.getFullness() <= 75) ? 1 : 0, 30, 1);   // 25+ "emptyness" to get +1 closeness
-                    MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.USE, pos, (short) 1, false);
+                    pet.gainTamenessFullness(chr, (pet.getFullness() <= 75) ? 1 : 0, 30, 1);   // 25+ "emptyness" to get +1 tameness
+                    InventoryManipulator.removeFromSlot(c, InventoryType.USE, pos, (short) 1, false);
                 } finally {
                     useInv.unlockInventory();
                 }

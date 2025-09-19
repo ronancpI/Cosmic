@@ -23,21 +23,21 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
+import client.autoban.AutobanFactory;
 import client.command.Command;
-import tools.MapleLogger;
 
 public class IgnoredCommand extends Command {
     {
-        setDescription("Show all players being ignored in logs.");
+        setDescription("Show all characters being ignored in auto-ban alerts.");
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        for (Integer cid : MapleLogger.ignored) {
-            player.yellowMessage(MapleCharacter.getNameById(cid) + " is being ignored.");
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        for (int chrId : AutobanFactory.getIgnoredChrIds()) {
+            player.yellowMessage(Character.getNameById(chrId) + " is being ignored.");
         }
     }
 }

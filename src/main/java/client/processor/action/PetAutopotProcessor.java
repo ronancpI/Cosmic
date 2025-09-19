@@ -21,47 +21,47 @@
 */
 package client.processor.action;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
-import client.inventory.manipulator.MapleInventoryManipulator;
+import client.inventory.manipulator.InventoryManipulator;
 import config.YamlConfig;
+import server.ItemInformationProvider;
+import server.StatEffect;
+import tools.PacketCreator;
+
 import java.util.List;
-import server.MapleItemInformationProvider;
-import server.MapleStatEffect;
-import tools.MaplePacketCreator;
 
 /**
- *
  * @author Ronan - multi-pot consumption feature
  */
 public class PetAutopotProcessor {
-    
+
     private static class AutopotAction {
-        
-        private MapleClient c;
+
+        private final Client c;
         private short slot;
-        private int itemId;
-        
+        private final int itemId;
+
         private Item toUse;
         private List<Item> toUseList;
 
         private boolean hasHpGain, hasMpGain;
         private int maxHp, maxMp, curHp, curMp;
         private double incHp, incMp;
-        
-        private boolean cursorOnNextAvailablePot(MapleCharacter chr) {
-            if(toUseList == null) {
-                toUseList = chr.getInventory(MapleInventoryType.USE).linkedListById(itemId);
+
+        private boolean cursorOnNextAvailablePot(Character chr) {
+            if (toUseList == null) {
+                toUseList = chr.getInventory(InventoryType.USE).linkedListById(itemId);
             }
 
             toUse = null;
-            while(!toUseList.isEmpty()) {
+            while (!toUseList.isEmpty()) {
                 Item it = toUseList.remove(0);
 
-                if(it.getQuantity() > 0) {
+                if (it.getQuantity() > 0) {
                     toUse = it;
                     slot = it.getPosition();
 
@@ -71,37 +71,37 @@ public class PetAutopotProcessor {
 
             return false;
         }
-        
-        public AutopotAction(MapleClient c, short slot, int itemId) {
+
+        public AutopotAction(Client c, short slot, int itemId) {
             this.c = c;
             this.slot = slot;
             this.itemId = itemId;
         }
-        
+
         public void run() {
-            MapleClient c = this.c;
-            MapleCharacter chr = c.getPlayer();
+            Client c = this.c;
+            Character chr = c.getPlayer();
             if (!chr.isAlive()) {
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
+
             int useCount = 0, qtyCount = 0;
-            MapleStatEffect stat = null;
-            
+            StatEffect stat = null;
+
             maxHp = chr.getCurrentMaxHp();
             maxMp = chr.getCurrentMaxMp();
 
             curHp = chr.getHp();
             curMp = chr.getMp();
 
-            MapleInventory useInv = chr.getInventory(MapleInventoryType.USE);
+            Inventory useInv = chr.getInventory(InventoryType.USE);
             useInv.lockInventory();
             try {
                 toUse = useInv.getItem(slot);
                 if (toUse != null) {
                     if (toUse.getItemId() != itemId) {
-                        c.announce(MaplePacketCreator.enableActions());
+                        c.sendPacket(PacketCreator.enableActions());
                         return;
                     }
 
@@ -110,20 +110,24 @@ public class PetAutopotProcessor {
                     // from now on, toUse becomes the "cursor" for the current pot being used
                     if (toUse.getQuantity() <= 0) {
                         if (!cursorOnNextAvailablePot(chr)) {
-                            c.announce(MaplePacketCreator.enableActions());
+                            c.sendPacket(PacketCreator.enableActions());
                             return;
                         }
                     }
 
-                    stat = MapleItemInformationProvider.getInstance().getItemEffect(toUse.getItemId());
+                    stat = ItemInformationProvider.getInstance().getItemEffect(toUse.getItemId());
                     hasHpGain = stat.getHp() > 0 || stat.getHpRate() > 0.0;
                     hasMpGain = stat.getMp() > 0 || stat.getMpRate() > 0.0;
-                    
+
                     incHp = stat.getHp();
-                    if(incHp <= 0 && hasHpGain) incHp = Math.ceil(maxHp * stat.getHpRate());
+                    if (incHp <= 0 && hasHpGain) {
+                        incHp = Math.ceil(maxHp * stat.getHpRate());
+                    }
 
                     incMp = stat.getMp();
-                    if(incMp <= 0 && hasMpGain) incMp = Math.ceil(maxMp * stat.getMpRate());
+                    if (incMp <= 0 && hasMpGain) {
+                        incMp = Math.ceil(maxMp * stat.getMpRate());
+                    }
 
                     if (YamlConfig.config.server.USE_COMPULSORY_AUTOPOT) {
                         if (hasHpGain) {
@@ -139,7 +143,7 @@ public class PetAutopotProcessor {
                                 qtyCount = Math.max(qtyCount, (int) Math.ceil(mpRatio / incMp));
                             }
                         }
-                        
+
                         if (qtyCount < 0) { // thanks Flint, Kevs for noticing an issue where negative counts were getting achieved
                             qtyCount = 0;
                         }
@@ -149,7 +153,7 @@ public class PetAutopotProcessor {
 
                     while (true) {
                         short qtyToUse = (short) Math.min(qtyCount, toUse.getQuantity());
-                        MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.USE, slot, qtyToUse, false);
+                        InventoryManipulator.removeFromSlot(c, InventoryType.USE, slot, qtyToUse, false);
 
                         curHp += (incHp * qtyToUse);
                         curMp += (incMp * qtyToUse);
@@ -157,10 +161,10 @@ public class PetAutopotProcessor {
                         useCount += qtyToUse;
                         qtyCount -= qtyToUse;
 
-                        if(toUse.getQuantity() == 0 && qtyCount > 0) {
+                        if (toUse.getQuantity() == 0 && qtyCount > 0) {
                             // depleted out the current slot, fetch for more
 
-                            if(!cursorOnNextAvailablePot(chr)) {
+                            if (!cursorOnNextAvailablePot(chr)) {
                                 break;    // no more pots available
                             }
                         } else {
@@ -178,13 +182,13 @@ public class PetAutopotProcessor {
                 }
             }
 
-            chr.announce(MaplePacketCreator.enableActions());
+            chr.sendPacket(PacketCreator.enableActions());
         }
     }
-    
-    public static void runAutopotAction(MapleClient c, short slot, int itemid) {
+
+    public static void runAutopotAction(Client c, short slot, int itemid) {
         AutopotAction action = new AutopotAction(c, slot, itemid);
         action.run();
     }
-    
+
 }

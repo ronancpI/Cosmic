@@ -23,10 +23,11 @@
 */
 package client.command.commands.gm4;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import server.life.MapleLifeFactory;
+import constants.id.MobId;
+import server.life.LifeFactory;
 
 public class ZakumCommand extends Command {
     {
@@ -34,11 +35,11 @@ public class ZakumCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        player.getMap().spawnFakeMonsterOnGroundBelow(MapleLifeFactory.getMonster(8800000), player.getPosition());
-        for (int x = 8800003; x < 8800011; x++) {
-            player.getMap().spawnMonsterOnGroundBelow(MapleLifeFactory.getMonster(x), player.getPosition());
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        player.getMap().spawnFakeMonsterOnGroundBelow(LifeFactory.getMonster(MobId.ZAKUM_1), player.getPosition());
+        for (int mobId = MobId.ZAKUM_ARM_1; mobId <= MobId.ZAKUM_ARM_8; mobId++) {
+            player.getMap().spawnMonsterOnGroundBelow(LifeFactory.getMonster(mobId), player.getPosition());
         }
     }
 }

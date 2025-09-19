@@ -21,19 +21,19 @@
 */
 package net.server.handlers.login;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
-public final class RelogRequestHandler extends AbstractMaplePacketHandler {
+public final class RelogRequestHandler extends AbstractPacketHandler {
     @Override
-    public boolean validateState(MapleClient c) {
+    public boolean validateState(Client c) {
         return !c.isLoggedIn();
     }
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        c.announce(MaplePacketCreator.getRelogResponse());
+    public final void handlePacket(InPacket p, Client c) {
+        c.sendPacket(PacketCreator.getRelogResponse());
     }
 }

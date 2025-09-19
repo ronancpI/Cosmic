@@ -20,43 +20,43 @@
 
 package net.server.channel.handlers;
 
-import client.MapleBuffStat;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.BuffStat;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.life.Monster;
+import server.maps.MapObject;
+import tools.PacketCreator;
+import tools.Pair;
+
 import java.util.Collections;
 import java.util.List;
-import net.AbstractMaplePacketHandler;
-import server.life.MapleMonster;
-import server.maps.MapleMapObject;
-import tools.MaplePacketCreator;
-import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
 
 /**
- *
  * @author Ronan
  */
-public final class PlayerMapTransitionHandler extends AbstractMaplePacketHandler {
-    
+public final class PlayerMapTransitionHandler extends AbstractPacketHandler {
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
         chr.setMapTransitionComplete();
-        
-        int beaconid = chr.getBuffSource(MapleBuffStat.HOMING_BEACON);
+
+        int beaconid = chr.getBuffSource(BuffStat.HOMING_BEACON);
         if (beaconid != -1) {
-            chr.cancelBuffStats(MapleBuffStat.HOMING_BEACON);
-            
-            final List<Pair<MapleBuffStat, Integer>> stat = Collections.singletonList(new Pair<>(MapleBuffStat.HOMING_BEACON, 0));
-            chr.announce(MaplePacketCreator.giveBuff(1, beaconid, stat));
+            chr.cancelBuffStats(BuffStat.HOMING_BEACON);
+
+            final List<Pair<BuffStat, Integer>> stat = Collections.singletonList(new Pair<>(BuffStat.HOMING_BEACON, 0));
+            chr.sendPacket(PacketCreator.giveBuff(1, beaconid, stat));
         }
-        
+
         if (!chr.isHidden()) {  // thanks Lame (Conrad) for noticing hidden characters controlling mobs
-            for (MapleMapObject mo : chr.getMap().getMonsters()) {    // thanks BHB, IxianMace, Jefe for noticing several issues regarding mob statuses (such as freeze)
-                MapleMonster m = (MapleMonster) mo;
+            for (MapObject mo : chr.getMap().getMonsters()) {    // thanks BHB, IxianMace, Jefe for noticing several issues regarding mob statuses (such as freeze)
+                Monster m = (Monster) mo;
                 if (m.getSpawnEffect() == 0 || m.getHp() < m.getMaxHp()) {     // avoid effect-spawning mobs
                     if (m.getController() == chr) {
-                        c.announce(MaplePacketCreator.stopControllingMonster(m.getObjectId()));
+                        c.sendPacket(PacketCreator.stopControllingMonster(m.getObjectId()));
                         m.sendDestroyData(c);
                         m.aggroRemoveController();
                     } else {

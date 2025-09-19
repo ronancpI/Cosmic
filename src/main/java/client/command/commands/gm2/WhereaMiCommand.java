@@ -23,13 +23,13 @@
 */
 package client.command.commands.gm2;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import server.life.MapleMonster;
-import server.life.MapleNPC;
-import server.life.MaplePlayerNPC;
-import server.maps.MapleMapObject;
+import server.life.Monster;
+import server.life.NPC;
+import server.life.PlayerNPC;
+import server.maps.MapObject;
 
 import java.util.HashSet;
 
@@ -39,56 +39,52 @@ public class WhereaMiCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        
-        HashSet<MapleCharacter> chars = new HashSet<>();
-        HashSet<MapleNPC> npcs = new HashSet<>();
-        HashSet<MaplePlayerNPC> playernpcs = new HashSet<>();
-        HashSet<MapleMonster> mobs = new HashSet<>();
-        
-        for (MapleMapObject mmo : player.getMap().getMapObjects()) {
-            if (mmo instanceof MapleNPC) {
-                MapleNPC npc = (MapleNPC) mmo;
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+
+        HashSet<Character> chars = new HashSet<>();
+        HashSet<NPC> npcs = new HashSet<>();
+        HashSet<PlayerNPC> playernpcs = new HashSet<>();
+        HashSet<Monster> mobs = new HashSet<>();
+
+        for (MapObject mmo : player.getMap().getMapObjects()) {
+            if (mmo instanceof NPC npc) {
                 npcs.add(npc);
-            } else if (mmo instanceof MapleCharacter) {
-                MapleCharacter mc = (MapleCharacter) mmo;
+            } else if (mmo instanceof Character mc) {
                 chars.add(mc);
-            } else if (mmo instanceof MapleMonster) {
-                MapleMonster mob = (MapleMonster) mmo;
+            } else if (mmo instanceof Monster mob) {
                 if (mob.isAlive()) {
                     mobs.add(mob);
                 }
-            } else if (mmo instanceof MaplePlayerNPC) {
-                MaplePlayerNPC npc = (MaplePlayerNPC) mmo;
+            } else if (mmo instanceof PlayerNPC npc) {
                 playernpcs.add(npc);
             }
         }
-        
+
         player.yellowMessage("Map ID: " + player.getMap().getId());
-        
+
         player.yellowMessage("Players on this map:");
-        for (MapleCharacter chr : chars) {
+        for (Character chr : chars) {
             player.dropMessage(5, ">> " + chr.getName() + " - " + chr.getId() + " - Oid: " + chr.getObjectId());
         }
-        
+
         if (!playernpcs.isEmpty()) {
             player.yellowMessage("PlayerNPCs on this map:");
-            for (MaplePlayerNPC pnpc : playernpcs) {
+            for (PlayerNPC pnpc : playernpcs) {
                 player.dropMessage(5, ">> " + pnpc.getName() + " - Scriptid: " + pnpc.getScriptId() + " - Oid: " + pnpc.getObjectId());
             }
         }
-        
+
         if (!npcs.isEmpty()) {
             player.yellowMessage("NPCs on this map:");
-            for (MapleNPC npc : npcs) {
+            for (NPC npc : npcs) {
                 player.dropMessage(5, ">> " + npc.getName() + " - " + npc.getId() + " - Oid: " + npc.getObjectId());
             }
         }
-        
+
         if (!mobs.isEmpty()) {
             player.yellowMessage("Monsters on this map:");
-            for (MapleMonster mob : mobs) {
+            for (Monster mob : mobs) {
                 if (mob.isAlive()) {
                     player.dropMessage(5, ">> " + mob.getName() + " - " + mob.getId() + " - Oid: " + mob.getObjectId());
                 }

@@ -23,14 +23,14 @@
 */
 package client.command;
 
-import client.MapleClient;
+import client.Client;
 
 public abstract class Command {
 
     protected int rank;
     protected String description;
 
-    public abstract void execute(MapleClient client, String[] params);
+    public abstract void execute(Client client, String[] params);
 
     public String getDescription() {
         return description;
@@ -39,7 +39,7 @@ public abstract class Command {
     protected void setDescription(String description) {
         this.description = description;
     }
-    
+
     public int getRank() {
         return rank;
     }

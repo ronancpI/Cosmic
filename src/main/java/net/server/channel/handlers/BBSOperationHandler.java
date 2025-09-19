@@ -21,41 +21,44 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.guild.GuildPackets;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.DatabaseConnection;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-public final class BBSOperationHandler extends AbstractMaplePacketHandler {
+public final class BBSOperationHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(BBSOperationHandler.class);
 
     private String correctLength(String in, int maxSize) {
         return in.length() > maxSize ? in.substring(0, maxSize) : in;
     }
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
+    public void handlePacket(InPacket p, Client c) {
         if (c.getPlayer().getGuildId() < 1) {
             return;
         }
-        byte mode = slea.readByte();
+        byte mode = p.readByte();
         int localthreadid = 0;
         switch (mode) {
             case 0:
-                boolean bEdit = slea.readByte() == 1;
+                boolean bEdit = p.readByte() == 1;
                 if (bEdit) {
-                    localthreadid = slea.readInt();
+                    localthreadid = p.readInt();
                 }
-                boolean bNotice = slea.readByte() == 1;
-                String title = correctLength(slea.readMapleAsciiString(), 25);
-                String text = correctLength(slea.readMapleAsciiString(), 600);
-                int icon = slea.readInt();
+                boolean bNotice = p.readByte() == 1;
+                String title = correctLength(p.readString(), 25);
+                String text = correctLength(p.readString(), 600);
+                int icon = p.readInt();
                 if (icon >= 0x64 && icon <= 0x6a) {
                     if (!c.getPlayer().haveItemWithId(5290000 + icon - 0x64, false)) {
                         return;
@@ -70,25 +73,25 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
                 }
                 break;
             case 1:
-                localthreadid = slea.readInt();
+                localthreadid = p.readInt();
                 deleteBBSThread(c, localthreadid);
                 break;
             case 2:
-                int start = slea.readInt();
+                int start = p.readInt();
                 listBBSThreads(c, start * 10);
                 break;
             case 3: // list thread + reply, following by id (int)
-                localthreadid = slea.readInt();
+                localthreadid = p.readInt();
                 displayThread(c, localthreadid);
                 break;
             case 4: // reply
-                localthreadid = slea.readInt();
-                text = correctLength(slea.readMapleAsciiString(), 25);
+                localthreadid = p.readInt();
+                text = correctLength(p.readString(), 25);
                 newBBSReply(c, localthreadid, text);
                 break;
             case 5: // delete reply
-                slea.readInt(); // we don't use this
-                int replyid = slea.readInt();
+                p.readInt(); // we don't use this
+                int replyid = p.readInt();
                 deleteBBSReply(c, replyid);
                 break;
             default:
@@ -96,21 +99,21 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
         }
     }
 
-    private static void listBBSThreads(MapleClient c, int start) {
+    private static void listBBSThreads(Client c, int start) {
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement("SELECT * FROM bbs_threads WHERE guildid = ? ORDER BY localthreadid DESC",
                      ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY)) {
 
             ps.setInt(1, c.getPlayer().getGuildId());
             try (ResultSet rs = ps.executeQuery()) {
-                c.announce(MaplePacketCreator.BBSThreadList(rs, start));
+                c.sendPacket(GuildPackets.BBSThreadList(rs, start));
             }
         } catch (SQLException se) {
             se.printStackTrace();
         }
     }
 
-    private static void newBBSReply(MapleClient c, int localthreadid, String text) {
+    private static void newBBSReply(Client c, int localthreadid, String text) {
         if (c.getPlayer().getGuildId() <= 0) {
             return;
         }
@@ -148,8 +151,8 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
         }
     }
 
-    private static void editBBSThread(MapleClient client, String title, String text, int icon, int localthreadid) {
-        MapleCharacter chr = client.getPlayer();
+    private static void editBBSThread(Client client, String title, String text, int icon, int localthreadid) {
+        Character chr = client.getPlayer();
         if (chr.getGuildId() < 1) {
             return;
         }
@@ -172,8 +175,8 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
         }
     }
 
-    private static void newBBSThread(MapleClient client, String title, String text, int icon, boolean bNotice) {
-        MapleCharacter chr = client.getPlayer();
+    private static void newBBSThread(Client client, String title, String text, int icon, boolean bNotice) {
+        Character chr = client.getPlayer();
         if (chr.getGuildId() <= 0) {
             return;
         }
@@ -207,8 +210,8 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
 
     }
 
-    public static void deleteBBSThread(MapleClient client, int localthreadid) {
-        MapleCharacter mc = client.getPlayer();
+    public static void deleteBBSThread(Client client, int localthreadid) {
+        Character mc = client.getPlayer();
         if (mc.getGuildId() <= 0) {
             return;
         }
@@ -247,8 +250,8 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
         }
     }
 
-    public static void deleteBBSReply(MapleClient client, int replyid) {
-        MapleCharacter mc = client.getPlayer();
+    public static void deleteBBSReply(Client client, int replyid) {
+        Character mc = client.getPlayer();
         if (mc.getGuildId() <= 0) {
             return;
         }
@@ -288,46 +291,38 @@ public final class BBSOperationHandler extends AbstractMaplePacketHandler {
         }
     }
 
-    public static void displayThread(MapleClient client, int threadid) {
+    public static void displayThread(Client client, int threadid) {
         displayThread(client, threadid, true);
     }
 
-    public static void displayThread(MapleClient client, int threadid, boolean bIsThreadIdLocal) {
-        MapleCharacter mc = client.getPlayer();
+    public static void displayThread(Client client, int threadid, boolean bIsThreadIdLocal) {
+        Character mc = client.getPlayer();
         if (mc.getGuildId() <= 0) {
             return;
         }
 
         try (Connection con = DatabaseConnection.getConnection()) {
             // TODO clean up this block and use try-with-resources
-            PreparedStatement ps2;
             try (PreparedStatement ps = con.prepareStatement("SELECT * FROM bbs_threads WHERE guildid = ? AND " + (bIsThreadIdLocal ? "local" : "") + "threadid = ?")) {
                 ps.setInt(1, mc.getGuildId());
                 ps.setInt(2, threadid);
                 ResultSet threadRS = ps.executeQuery();
                 if (!threadRS.next()) {
-                    threadRS.close();
-                    ps.close();
                     return;
                 }
                 ResultSet repliesRS = null;
-                ps2 = null;
-                if (threadRS.getInt("replycount") >= 0) {
-                    ps2 = con.prepareStatement("SELECT * FROM bbs_replies WHERE threadid = ?");
-                    ps2.setInt(1, !bIsThreadIdLocal ? threadid : threadRS.getInt("threadid"));
-                    repliesRS = ps2.executeQuery();
+                try (PreparedStatement ps2 = con.prepareStatement("SELECT * FROM bbs_replies WHERE threadid = ?")) {
+                    if (threadRS.getInt("replycount") >= 0) {
+                        ps2.setInt(1, !bIsThreadIdLocal ? threadid : threadRS.getInt("threadid"));
+                        repliesRS = ps2.executeQuery();
+                    }
+                    client.sendPacket(GuildPackets.showThread(bIsThreadIdLocal ? threadid : threadRS.getInt("localthreadid"), threadRS, repliesRS));
                 }
-                client.announce(MaplePacketCreator.showThread(bIsThreadIdLocal ? threadid : threadRS.getInt("localthreadid"), threadRS, repliesRS));
-                repliesRS.close();
-            }
-            if (ps2 != null) {
-                ps2.close();
             }
         } catch (SQLException se) {
-            se.printStackTrace();
+            log.error("Error displaying thread", se);
         } catch (RuntimeException re) {//btw we get this everytime for some reason, but replies work!
-            re.printStackTrace();
-            System.out.println("The number of reply rows does not match the replycount in thread.");
+            log.error("The number of reply rows does not match the replycount in thread.", re);
         }
     }
 }

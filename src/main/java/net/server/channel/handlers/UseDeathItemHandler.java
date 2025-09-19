@@ -21,16 +21,16 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
-public final class UseDeathItemHandler extends AbstractMaplePacketHandler {
+public final class UseDeathItemHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int itemId = slea.readInt();
+    public final void handlePacket(InPacket p, Client c) {
+        int itemId = p.readInt();
         c.getPlayer().setItemEffect(itemId);
-        c.announce(MaplePacketCreator.itemEffect(c.getPlayer().getId(), itemId));
+        c.sendPacket(PacketCreator.itemEffect(c.getPlayer().getId(), itemId));
     }
 }

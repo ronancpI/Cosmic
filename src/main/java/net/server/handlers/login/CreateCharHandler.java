@@ -21,75 +21,50 @@
  */
 package net.server.handlers.login;
 
-import client.MapleClient;
+import client.Client;
 import client.creator.novice.BeginnerCreator;
 import client.creator.novice.LegendCreator;
 import client.creator.novice.NoblesseCreator;
-import net.AbstractMaplePacketHandler;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+public final class CreateCharHandler extends AbstractPacketHandler {
 
-public final class CreateCharHandler extends AbstractMaplePacketHandler {
-        
-        private final static Set<Integer> IDs = new HashSet<>(Arrays.asList(new Integer[]{
-		1302000, 1312004, 1322005, 1442079,// weapons
-		1040002, 1040006, 1040010, 1041002, 1041006, 1041010, 1041011, 1042167,// bottom
-		1060002, 1060006, 1061002, 1061008, 1062115, // top
-		1072001, 1072005, 1072037, 1072038, 1072383,// shoes
-		30000, 30010,30020, 30030, 31000, 31040, 31050,// hair  
-		20000, 20001, 20002, 21000, 21001, 21002, 21201, 20401, 20402, 21700, 20100  //face
-		//#NeverTrustStevenCode
-	}));
+    @Override
+    public void handlePacket(InPacket p, Client c) {
+        String name = p.readString();
+        int job = p.readInt();
+        int face = p.readInt();
 
-	private static boolean isLegal(Integer toCompare) {
-                return IDs.contains(toCompare);
-	}         	
+        int hair = p.readInt();
+        int haircolor = p.readInt();
+        int skincolor = p.readInt();
 
+        int top = p.readInt();
+        int bottom = p.readInt();
+        int shoes = p.readInt();
+        int weapon = p.readInt();
+        int gender = p.readByte();
 
-	@Override
-	public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-                String name = slea.readMapleAsciiString();
-                int job = slea.readInt();
-		int face = slea.readInt();
+        int status;
+        switch (job) {
+        case 0: // Knights of Cygnus
+            status = NoblesseCreator.createCharacter(c, name, face, hair + haircolor, skincolor, top, bottom, shoes, weapon, gender);
+            break;
+        case 1: // Adventurer
+            status = BeginnerCreator.createCharacter(c, name, face, hair + haircolor, skincolor, top, bottom, shoes, weapon, gender);
+            break;
+        case 2: // Aran
+            status = LegendCreator.createCharacter(c, name, face, hair + haircolor, skincolor, top, bottom, shoes, weapon, gender);
+            break;
+        default:
+            c.sendPacket(PacketCreator.deleteCharResponse(0, 9));
+            return;
+        }
 
-		int hair = slea.readInt();
-		int haircolor = slea.readInt();
-		int skincolor = slea.readInt();
-
-		int top = slea.readInt();
-		int bottom = slea.readInt();
-		int shoes = slea.readInt();
-		int weapon = slea.readInt();
-                int gender = slea.readByte();
-                
-                int [] items = new int [] {weapon, top, bottom, shoes, hair, face};
-		for (int item : items) {
-			if (!isLegal(item)) {
-				FilePrinter.printError(FilePrinter.EXPLOITS + name + ".txt", "Owner from account '" + c.getAccountName() + "' tried to packet edit in char creation.");
-				c.disconnect(true, false);
-				return;
-			}
-		}
-                
-                int status;
-                if (job == 0) { // Knights of Cygnus
-			status = NoblesseCreator.createCharacter(c, name, face, hair + haircolor, skincolor, top, bottom, shoes, weapon, gender);
-		} else if (job == 1) { // Adventurer
-			status = BeginnerCreator.createCharacter(c, name, face, hair + haircolor, skincolor, top, bottom, shoes, weapon, gender);
-		} else if (job == 2) { // Aran
-			status = LegendCreator.createCharacter(c, name, face, hair + haircolor, skincolor, top, bottom, shoes, weapon, gender);
-		} else {
-			c.announce(MaplePacketCreator.deleteCharResponse(0, 9));
-			return;
-		}
-                
-                if (status == -2) {
-                        c.announce(MaplePacketCreator.deleteCharResponse(0, 9));
-                }
-	}
+        if (status == -2) {
+            c.sendPacket(PacketCreator.deleteCharResponse(0, 9));
+        }
+    }
 }

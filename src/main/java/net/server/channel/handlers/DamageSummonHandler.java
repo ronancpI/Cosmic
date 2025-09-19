@@ -21,34 +21,34 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleBuffStat;
-import client.MapleCharacter;
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import server.maps.MapleSummon;
-import server.maps.MapleMapObject;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.BuffStat;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.maps.MapObject;
+import server.maps.Summon;
+import tools.PacketCreator;
 
-public final class DamageSummonHandler extends AbstractMaplePacketHandler {
+public final class DamageSummonHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int oid = slea.readInt();
-        slea.skip(1);   // -1
-        int damage = slea.readInt();
-        int monsterIdFrom = slea.readInt();
-        
-        MapleCharacter player = c.getPlayer();
-        MapleMapObject mmo = player.getMap().getMapObject(oid);
-        
-        if(mmo != null && mmo instanceof MapleSummon) {
-            MapleSummon summon = (MapleSummon) mmo;
-        
+    public final void handlePacket(InPacket p, Client c) {
+        int oid = p.readInt();
+        p.skip(1);   // -1
+        int damage = p.readInt();
+        int monsterIdFrom = p.readInt();
+
+        Character player = c.getPlayer();
+        MapObject mmo = player.getMap().getMapObject(oid);
+
+        if (mmo != null && mmo instanceof Summon) {
+            Summon summon = (Summon) mmo;
+
             summon.addHP(-damage);
             if (summon.getHP() <= 0) {
-                player.cancelEffectFromBuffStat(MapleBuffStat.PUPPET);
+                player.cancelEffectFromBuffStat(BuffStat.PUPPET);
             }
-            player.getMap().broadcastMessage(player, MaplePacketCreator.damageSummon(player.getId(), oid, damage, monsterIdFrom), summon.getPosition());
+            player.getMap().broadcastMessage(player, PacketCreator.damageSummon(player.getId(), oid, damage, monsterIdFrom), summon.getPosition());
         }
     }
 }

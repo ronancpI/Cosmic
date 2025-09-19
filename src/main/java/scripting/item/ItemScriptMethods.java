@@ -21,15 +21,14 @@
 */
 package scripting.item;
 
-import client.MapleClient;
+import client.Client;
 import scripting.AbstractPlayerInteraction;
 
 /**
- *
  * @author kevintjuh93
  */
 public class ItemScriptMethods extends AbstractPlayerInteraction {
-    public ItemScriptMethods(MapleClient c) {
-    	super(c);
+    public ItemScriptMethods(Client c) {
+        super(c);
     }
 }

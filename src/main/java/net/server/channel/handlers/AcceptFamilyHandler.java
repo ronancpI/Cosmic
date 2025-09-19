@@ -21,54 +21,56 @@
  */
 package net.server.channel.handlers;
 
+import client.Character;
+import client.Client;
+import client.Family;
+import client.FamilyEntry;
 import config.YamlConfig;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.coordinator.world.InviteCoordinator;
+import net.server.coordinator.world.InviteCoordinator.InviteResult;
+import net.server.coordinator.world.InviteCoordinator.InviteResultType;
+import net.server.coordinator.world.InviteCoordinator.InviteType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.DatabaseConnection;
+import tools.PacketCreator;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.MapleFamily;
-import client.MapleFamilyEntry;
-import net.AbstractMaplePacketHandler;
-import net.server.coordinator.world.MapleInviteCoordinator;
-import net.server.coordinator.world.MapleInviteCoordinator.InviteResult;
-import net.server.coordinator.world.MapleInviteCoordinator.InviteType;
-import net.server.coordinator.world.MapleInviteCoordinator.MapleInviteResult;
-import tools.DatabaseConnection;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
-
 /**
- *
  * @author Jay Estrella
  * @author Ubaware
  */
-public final class AcceptFamilyHandler extends AbstractMaplePacketHandler {
+public final class AcceptFamilyHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(AcceptFamilyHandler.class);
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        if(!YamlConfig.config.server.USE_FAMILY_SYSTEM) {
+    public void handlePacket(InPacket p, Client c) {
+        if (!YamlConfig.config.server.USE_FAMILY_SYSTEM) {
             return;
         }
-        MapleCharacter chr = c.getPlayer();
-        int inviterId = slea.readInt();
-        slea.readMapleAsciiString();
-        boolean accept = slea.readByte() != 0;
+        Character chr = c.getPlayer();
+        int inviterId = p.readInt();
+        p.readString();
+        boolean accept = p.readByte() != 0;
         // String inviterName = slea.readMapleAsciiString();
-        MapleCharacter inviter = c.getWorldServer().getPlayerStorage().getCharacterById(inviterId);
-        if(inviter != null) {
-            MapleInviteResult inviteResult = MapleInviteCoordinator.answerInvite(InviteType.FAMILY, c.getPlayer().getId(), c.getPlayer(), accept);
-            if(inviteResult.result == InviteResult.NOT_FOUND) return; //was never invited. (or expired on server only somehow?)
-            if(accept) {
-                if(inviter.getFamily() != null) {
-                    if(chr.getFamily() == null) {
-                        MapleFamilyEntry newEntry = new MapleFamilyEntry(inviter.getFamily(), chr.getId(), chr.getName(), chr.getLevel(), chr.getJob());
+        Character inviter = c.getWorldServer().getPlayerStorage().getCharacterById(inviterId);
+        if (inviter != null) {
+            InviteResult inviteResult = InviteCoordinator.answerInvite(InviteType.FAMILY, c.getPlayer().getId(), c.getPlayer(), accept);
+            if (inviteResult.result == InviteResultType.NOT_FOUND) {
+                return; //was never invited. (or expired on server only somehow?)
+            }
+            if (accept) {
+                if (inviter.getFamily() != null) {
+                    if (chr.getFamily() == null) {
+                        FamilyEntry newEntry = new FamilyEntry(inviter.getFamily(), chr.getId(), chr.getName(), chr.getLevel(), chr.getJob());
                         newEntry.setCharacter(chr);
-                        if(!newEntry.setSenior(inviter.getFamilyEntry(), true)) {
-                            inviter.announce(MaplePacketCreator.sendFamilyMessage(1, 0));
+                        if (!newEntry.setSenior(inviter.getFamilyEntry(), true)) {
+                            inviter.sendPacket(PacketCreator.sendFamilyMessage(1, 0));
                             return;
                         } else {
                             // save
@@ -76,31 +78,33 @@ public final class AcceptFamilyHandler extends AbstractMaplePacketHandler {
                             insertNewFamilyRecord(chr.getId(), inviter.getFamily().getID(), inviter.getId(), false);
                         }
                     } else { //absorb target family
-                        MapleFamilyEntry targetEntry = chr.getFamilyEntry();
-                        MapleFamily targetFamily = targetEntry.getFamily();
-                        if(targetFamily.getLeader() != targetEntry) return;
-                        if(inviter.getFamily().getTotalGenerations() + targetFamily.getTotalGenerations() <= YamlConfig.config.server.FAMILY_MAX_GENERATIONS) {
+                        FamilyEntry targetEntry = chr.getFamilyEntry();
+                        Family targetFamily = targetEntry.getFamily();
+                        if (targetFamily.getLeader() != targetEntry) {
+                            return;
+                        }
+                        if (inviter.getFamily().getTotalGenerations() + targetFamily.getTotalGenerations() <= YamlConfig.config.server.FAMILY_MAX_GENERATIONS) {
                             targetEntry.join(inviter.getFamilyEntry());
                         } else {
-                            inviter.announce(MaplePacketCreator.sendFamilyMessage(76, 0));
-                            chr.announce(MaplePacketCreator.sendFamilyMessage(76, 0));
+                            inviter.sendPacket(PacketCreator.sendFamilyMessage(76, 0));
+                            chr.sendPacket(PacketCreator.sendFamilyMessage(76, 0));
                             return;
                         }
                     }
                 } else { // create new family
-                    if(chr.getFamily() != null && inviter.getFamily() != null && chr.getFamily().getTotalGenerations() + inviter.getFamily().getTotalGenerations() >= YamlConfig.config.server.FAMILY_MAX_GENERATIONS) {
-                        inviter.announce(MaplePacketCreator.sendFamilyMessage(76, 0));
-                        chr.announce(MaplePacketCreator.sendFamilyMessage(76, 0));
+                    if (chr.getFamily() != null && inviter.getFamily() != null && chr.getFamily().getTotalGenerations() + inviter.getFamily().getTotalGenerations() >= YamlConfig.config.server.FAMILY_MAX_GENERATIONS) {
+                        inviter.sendPacket(PacketCreator.sendFamilyMessage(76, 0));
+                        chr.sendPacket(PacketCreator.sendFamilyMessage(76, 0));
                         return;
                     }
-                    MapleFamily newFamily = new MapleFamily(-1, c.getWorld());
+                    Family newFamily = new Family(-1, c.getWorld());
                     c.getWorldServer().addFamily(newFamily.getID(), newFamily);
-                    MapleFamilyEntry inviterEntry = new MapleFamilyEntry(newFamily, inviter.getId(), inviter.getName(), inviter.getLevel(), inviter.getJob());
+                    FamilyEntry inviterEntry = new FamilyEntry(newFamily, inviter.getId(), inviter.getName(), inviter.getLevel(), inviter.getJob());
                     inviterEntry.setCharacter(inviter);
-                    newFamily.setLeader(inviter.getFamilyEntry());                    
+                    newFamily.setLeader(inviter.getFamilyEntry());
                     newFamily.addEntry(inviterEntry);
-                    if(chr.getFamily() == null) { //completely new family
-                        MapleFamilyEntry newEntry = new MapleFamilyEntry(newFamily, chr.getId(), chr.getName(), chr.getLevel(), chr.getJob());
+                    if (chr.getFamily() == null) { //completely new family
+                        FamilyEntry newEntry = new FamilyEntry(newFamily, chr.getId(), chr.getName(), chr.getLevel(), chr.getJob());
                         newEntry.setCharacter(chr);
                         newEntry.setSenior(inviterEntry, true);
                         // save new family
@@ -108,46 +112,43 @@ public final class AcceptFamilyHandler extends AbstractMaplePacketHandler {
                         insertNewFamilyRecord(chr.getId(), newFamily.getID(), inviter.getId(), false); // char was already saved from setSenior() above
                         newFamily.setMessage("", true);
                     } else { //new family for inviter, absorb invitee family
-                        insertNewFamilyRecord(inviter.getId(), newFamily.getID(), 0 , true);
+                        insertNewFamilyRecord(inviter.getId(), newFamily.getID(), 0, true);
                         newFamily.setMessage("", true);
                         chr.getFamilyEntry().join(inviterEntry);
                     }
                 }
-                c.getPlayer().getFamily().broadcast(MaplePacketCreator.sendFamilyJoinResponse(true, c.getPlayer().getName()), c.getPlayer().getId());
-                c.announce(MaplePacketCreator.getSeniorMessage(inviter.getName()));
-                c.announce(MaplePacketCreator.getFamilyInfo(chr.getFamilyEntry()));
+                c.getPlayer().getFamily().broadcast(PacketCreator.sendFamilyJoinResponse(true, c.getPlayer().getName()), c.getPlayer().getId());
+                c.sendPacket(PacketCreator.getSeniorMessage(inviter.getName()));
+                c.sendPacket(PacketCreator.getFamilyInfo(chr.getFamilyEntry()));
                 chr.getFamilyEntry().updateSeniorFamilyInfo(true);
             } else {
-                inviter.announce(MaplePacketCreator.sendFamilyJoinResponse(false, c.getPlayer().getName()));
+                inviter.sendPacket(PacketCreator.sendFamilyJoinResponse(false, c.getPlayer().getName()));
             }
         }
-        c.announce(MaplePacketCreator.sendFamilyMessage(0, 0));
+        c.sendPacket(PacketCreator.sendFamilyMessage(0, 0));
     }
 
     private static void insertNewFamilyRecord(int characterID, int familyID, int seniorID, boolean updateChar) {
-        try(Connection con = DatabaseConnection.getConnection()) {
-            try(PreparedStatement ps = con.prepareStatement("INSERT INTO family_character (cid, familyid, seniorid) VALUES (?, ?, ?)")) {
+        try (Connection con = DatabaseConnection.getConnection()) {
+            try (PreparedStatement ps = con.prepareStatement("INSERT INTO family_character (cid, familyid, seniorid) VALUES (?, ?, ?)")) {
                 ps.setInt(1, characterID);
                 ps.setInt(2, familyID);
                 ps.setInt(3, seniorID);
                 ps.executeUpdate();
-            } catch(SQLException e) {
-                FilePrinter.printError(FilePrinter.FAMILY_ERROR, e, "Could not save new family record for char id " + characterID + ".");
-                e.printStackTrace();
+            } catch (SQLException e) {
+                log.error("Could not save new family record for chrId {}", characterID, e);
             }
-            if(updateChar) {
-                try(PreparedStatement ps = con.prepareStatement("UPDATE characters SET familyid = ? WHERE id = ?")) {
+            if (updateChar) {
+                try (PreparedStatement ps = con.prepareStatement("UPDATE characters SET familyid = ? WHERE id = ?")) {
                     ps.setInt(1, familyID);
                     ps.setInt(2, characterID);
                     ps.executeUpdate();
-                } catch(SQLException e) {
-                    FilePrinter.printError(FilePrinter.FAMILY_ERROR, e, "Could not update 'characters' 'familyid' record for char id " + characterID + ".");
-                    e.printStackTrace();
+                } catch (SQLException e) {
+                    log.error("Could not update 'characters' 'familyid' record for chrId {}", characterID, e);
                 }
             }
-        } catch(SQLException e) {
-            FilePrinter.printError(FilePrinter.FAMILY_ERROR, e, "Could not get connection to DB.");
-            e.printStackTrace();
+        } catch (SQLException e) {
+            log.error("Could not get connection to DB while inserting new family record", e);
         }
     }
 }

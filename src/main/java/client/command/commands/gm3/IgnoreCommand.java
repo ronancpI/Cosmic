@@ -23,39 +23,35 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
+import client.autoban.AutobanFactory;
 import client.command.Command;
 import net.server.Server;
-import tools.MapleLogger;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 public class IgnoreCommand extends Command {
     {
-        setDescription("Toggle enable/disable ignore a player in packet logs and autoban.");
+        setDescription("Toggle ignore a character from auto-ban alerts.");
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !ignore <ign>");
             return;
         }
-        MapleCharacter victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
+        Character victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
         if (victim == null) {
             player.message("Player '" + params[0] + "' could not be found on this world.");
             return;
         }
-        boolean monitored_ = MapleLogger.ignored.contains(victim.getId());
-        if (monitored_) {
-            MapleLogger.ignored.remove(victim.getId());
-        } else {
-            MapleLogger.ignored.add(victim.getId());
-        }
-        player.yellowMessage(victim.getName() + " is " + (!monitored_ ? "now being ignored." : "no longer being ignored."));
-        String message_ = player.getName() + (!monitored_ ? " has started ignoring " : " has stopped ignoring ") + victim.getName() + ".";
-        Server.getInstance().broadcastGMMessage(c.getWorld(), MaplePacketCreator.serverNotice(5, message_));
+
+        boolean ignored = AutobanFactory.toggleIgnored(victim.getId());
+        player.yellowMessage(victim.getName() + " is " + (ignored ? "now being ignored." : "no longer being ignored."));
+        String message_ = player.getName() + (ignored ? " has started ignoring " : " has stopped ignoring ") + victim.getName() + ".";
+        Server.getInstance().broadcastGMMessage(c.getWorld(), PacketCreator.serverNotice(5, message_));
 
     }
 }

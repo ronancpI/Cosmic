@@ -23,12 +23,12 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import server.life.MapleLifeFactory;
-import server.life.MapleNPC;
-import tools.MaplePacketCreator;
+import server.life.LifeFactory;
+import server.life.NPC;
+import tools.PacketCreator;
 
 public class NpcCommand extends Command {
     {
@@ -36,13 +36,13 @@ public class NpcCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !npc <npcid>");
             return;
         }
-        MapleNPC npc = MapleLifeFactory.getNPC(Integer.parseInt(params[0]));
+        NPC npc = LifeFactory.getNPC(Integer.parseInt(params[0]));
         if (npc != null) {
             npc.setPosition(player.getPosition());
             npc.setCy(player.getPosition().y);
@@ -50,7 +50,7 @@ public class NpcCommand extends Command {
             npc.setRx1(player.getPosition().x - 50);
             npc.setFh(player.getMap().getFootholds().findBelow(c.getPlayer().getPosition()).getId());
             player.getMap().addMapObject(npc);
-            player.getMap().broadcastMessage(MaplePacketCreator.spawnNPC(npc));
+            player.getMap().broadcastMessage(PacketCreator.spawnNPC(npc));
         }
     }
 }

@@ -21,30 +21,30 @@
 */
 package net.server.handlers.login;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import net.server.coordinator.session.MapleSessionCoordinator;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.coordinator.session.SessionCoordinator;
+import tools.PacketCreator;
 
 /*
  * @author Rob
  */
-public final class RegisterPinHandler extends AbstractMaplePacketHandler {
+public final class RegisterPinHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        byte c2 = slea.readByte();
+    public final void handlePacket(InPacket p, Client c) {
+        byte c2 = p.readByte();
         if (c2 == 0) {
-            MapleSessionCoordinator.getInstance().closeSession(c.getSession(), null);
-            c.updateLoginState(MapleClient.LOGIN_NOTLOGGEDIN);
+            SessionCoordinator.getInstance().closeSession(c, null);
+            c.updateLoginState(Client.LOGIN_NOTLOGGEDIN);
         } else {
-            String pin = slea.readMapleAsciiString();
+            String pin = p.readString();
             if (pin != null) {
                 c.setPin(pin);
-                c.announce(MaplePacketCreator.pinRegistered());
-                
-                MapleSessionCoordinator.getInstance().closeSession(c.getSession(), null);
-                c.updateLoginState(MapleClient.LOGIN_NOTLOGGEDIN);
+                c.sendPacket(PacketCreator.pinRegistered());
+
+                SessionCoordinator.getInstance().closeSession(c, null);
+                c.updateLoginState(Client.LOGIN_NOTLOGGEDIN);
             }
         }
     }

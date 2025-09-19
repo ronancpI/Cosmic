@@ -22,27 +22,34 @@
 package server;
 
 import client.inventory.Item;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 
 /**
- *
  * @author Traitor
  */
 public class MTSItemInfo {
-    private int price;
-    private Item item;
-    private String seller;
-    private int id;
-    private int year, month, day = 1;
+    private final int price;
+    private final Item item;
+    private final String seller;
+    private final int id;
+    private final int year;
+    private final int month;
+    private int day = 1;
 
     public MTSItemInfo(Item item, int price, int id, int cid, String seller, String date) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDate sellEnd = LocalDate.parse(date, formatter);
+
         this.item = item;
         this.price = price;
         this.seller = seller;
         this.id = id;
-        this.year = Integer.parseInt(date.substring(0, 4));
-        this.month = Integer.parseInt(date.substring(5, 7));
-        this.day = Integer.parseInt(date.substring(8, 10));
+        this.year = sellEnd.getYear();
+        this.month = sellEnd.getMonthValue();
+        this.day = sellEnd.getDayOfMonth();
     }
 
     public Item getItem() {

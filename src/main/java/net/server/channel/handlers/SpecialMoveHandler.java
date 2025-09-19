@@ -21,18 +21,11 @@
 */
 package net.server.channel.handlers;
 
-import java.awt.Point;
-
-import config.YamlConfig;
-import net.AbstractMaplePacketHandler;
-import server.MapleStatEffect;
-import server.life.MapleMonster;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.Skill;
 import client.SkillFactory;
+import config.YamlConfig;
 import constants.skills.Brawler;
 import constants.skills.Corsair;
 import constants.skills.DarkKnight;
@@ -40,16 +33,25 @@ import constants.skills.Hero;
 import constants.skills.Paladin;
 import constants.skills.Priest;
 import constants.skills.SuperGM;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
+import server.StatEffect;
+import server.life.Monster;
+import tools.PacketCreator;
 
-public final class SpecialMoveHandler extends AbstractMaplePacketHandler {
-    
+import java.awt.*;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+
+public final class SpecialMoveHandler extends AbstractPacketHandler {
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-    	MapleCharacter chr = c.getPlayer();
-        slea.readInt();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
+        p.readInt();
         chr.getAutobanManager().setTimestamp(4, Server.getInstance().getCurrentTimestamp(), 28);
-        int skillid = slea.readInt();
+        int skillid = p.readInt();
         
         /*
         if ((!GameConstants.isPqSkillMap(chr.getMapId()) && GameConstants.isPqSkill(skillid)) || (!chr.isGM() && GameConstants.isGMSkills(skillid)) || (!GameConstants.isInJobTree(skillid, chr.getJob().getId()) && !chr.isGM())) {
@@ -59,9 +61,9 @@ public final class SpecialMoveHandler extends AbstractMaplePacketHandler {
             return;
         }
         */
-        
+
         Point pos = null;
-        int __skillLevel = slea.readByte();
+        int __skillLevel = p.readByte();
         Skill skill = SkillFactory.getSkill(skillid);
         int skillLevel = chr.getSkillLevel(skill);
         if (skillid % 10000000 == 1010 || skillid % 10000000 == 1011) {
@@ -70,63 +72,65 @@ public final class SpecialMoveHandler extends AbstractMaplePacketHandler {
             }
             skillLevel = 1;
             chr.setDojoEnergy(0);
-            c.announce(MaplePacketCreator.getEnergy("energy", chr.getDojoEnergy()));
-            c.announce(MaplePacketCreator.serverNotice(5, "As you used the secret skill, your energy bar has been reset."));
+            c.sendPacket(PacketCreator.getEnergy("energy", chr.getDojoEnergy()));
+            c.sendPacket(PacketCreator.serverNotice(5, "As you used the secret skill, your energy bar has been reset."));
         }
-        if (skillLevel == 0 || skillLevel != __skillLevel) return;
-        
-        MapleStatEffect effect = skill.getEffect(skillLevel);
+        if (skillLevel == 0 || skillLevel != __skillLevel) {
+            return;
+        }
+
+        StatEffect effect = skill.getEffect(skillLevel);
         if (effect.getCooldown() > 0) {
             if (chr.skillIsCooling(skillid)) {
                 return;
             } else if (skillid != Corsair.BATTLE_SHIP) {
                 int cooldownTime = effect.getCooldown();
-                if(MapleStatEffect.isHerosWill(skillid) && YamlConfig.config.server.USE_FAST_REUSE_HERO_WILL) {
+                if (StatEffect.isHerosWill(skillid) && YamlConfig.config.server.USE_FAST_REUSE_HERO_WILL) {
                     cooldownTime /= 60;
                 }
-                
-                c.announce(MaplePacketCreator.skillCooldown(skillid, cooldownTime));
-                chr.addCooldown(skillid, currentServerTime(), cooldownTime * 1000);
+
+                c.sendPacket(PacketCreator.skillCooldown(skillid, cooldownTime));
+                chr.addCooldown(skillid, currentServerTime(), SECONDS.toMillis(cooldownTime));
             }
         }
         if (skillid == Hero.MONSTER_MAGNET || skillid == Paladin.MONSTER_MAGNET || skillid == DarkKnight.MONSTER_MAGNET) { // Monster Magnet
-            int num = slea.readInt();
+            int num = p.readInt();
             for (int i = 0; i < num; i++) {
-                int mobOid = slea.readInt();
-                byte success = slea.readByte();
-                chr.getMap().broadcastMessage(chr, MaplePacketCreator.catchMonster(mobOid, success), false);
-                MapleMonster monster = chr.getMap().getMonsterByOid(mobOid);
+                int mobOid = p.readInt();
+                byte success = p.readByte();
+                chr.getMap().broadcastMessage(chr, PacketCreator.catchMonster(mobOid, success), false);
+                Monster monster = chr.getMap().getMonsterByOid(mobOid);
                 if (monster != null) {
                     if (!monster.isBoss()) {
                         monster.aggroClearDamages();
                         monster.aggroMonsterDamage(chr, 1);
-                        
+
                         // thanks onechord for pointing out Magnet crashing the caster (issue would actually happen upon failing to catch mob)
                         // thanks Conrad for noticing Magnet crashing when trying to pull bosses and fixed mobs
                         monster.aggroSwitchController(chr, true);
                     }
                 }
             }
-            byte direction = slea.readByte();   // thanks MedicOP for pointing some 3rd-party related issues with Magnet
-            chr.getMap().broadcastMessage(chr, MaplePacketCreator.showBuffeffect(chr.getId(), skillid, chr.getSkillLevel(skillid), 1, direction), false);
-            c.announce(MaplePacketCreator.enableActions());
+            byte direction = p.readByte();   // thanks MedicOP for pointing some 3rd-party related issues with Magnet
+            chr.getMap().broadcastMessage(chr, PacketCreator.showBuffEffect(chr.getId(), skillid, chr.getSkillLevel(skillid), 1, direction), false);
+            c.sendPacket(PacketCreator.enableActions());
             return;
         } else if (skillid == Brawler.MP_RECOVERY) {// MP Recovery
             Skill s = SkillFactory.getSkill(skillid);
-            MapleStatEffect ef = s.getEffect(chr.getSkillLevel(s));
-            
+            StatEffect ef = s.getEffect(chr.getSkillLevel(s));
+
             int lose = chr.safeAddHP(-1 * (chr.getCurrentMaxHp() / ef.getX()));
             int gain = -lose * (ef.getY() / 100);
             chr.addMP(gain);
         } else if (skillid == SuperGM.HEAL_PLUS_DISPEL) {
-            slea.skip(11);
-            chr.getMap().broadcastMessage(chr, MaplePacketCreator.showBuffeffect(chr.getId(), skillid, chr.getSkillLevel(skillid)), false);
+            p.skip(11);
+            chr.getMap().broadcastMessage(chr, PacketCreator.showBuffEffect(chr.getId(), skillid, chr.getSkillLevel(skillid)), false);
         } else if (skillid % 10000000 == 1004) {
-            slea.readShort();
+            p.readShort();
         }
-        
-        if (slea.available() == 5) {
-            pos = new Point(slea.readShort(), slea.readShort());
+
+        if (p.available() == 5) {
+            pos = new Point(p.readShort(), p.readShort());
         }
         if (chr.isAlive()) {
             if (skill.getId() != Priest.MYSTIC_DOOR) {
@@ -148,11 +152,11 @@ public final class SpecialMoveHandler extends AbstractMaplePacketHandler {
                         c.releaseClient();
                     }
                 }
-                
-                c.announce(MaplePacketCreator.enableActions());
+
+                c.sendPacket(PacketCreator.enableActions());
             }
         } else {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         }
     }
 }

@@ -19,83 +19,89 @@
 */
 package client.creator;
 
-import client.MapleClient;
-import client.MapleCharacter;
-import client.MapleSkinColor;
+import client.Character;
+import client.Client;
+import client.SkinColor;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
 import config.YamlConfig;
 import net.server.Server;
-import server.MapleItemInformationProvider;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
+import tools.PacketCreator;
 
 /**
- *
  * @author RonanLana
  */
 public abstract class CharacterFactory {
-        
-        protected synchronized static int createNewCharacter(MapleClient c, String name, int face, int hair, int skin, int gender, CharacterFactoryRecipe recipe) {
-                if (YamlConfig.config.server.COLLECTIVE_CHARSLOT ? c.getAvailableCharacterSlots() <= 0 : c.getAvailableCharacterWorldSlots() <= 0) {
-                        return -3;
-                }
-            
-                if (!MapleCharacter.canCreateChar(name)) {
-                        return -1;
-                }
-                
-                MapleCharacter newchar = MapleCharacter.getDefault(c);
-                newchar.setWorld(c.getWorld());
-                newchar.setSkinColor(MapleSkinColor.getById(skin));
-                newchar.setGender(gender);
-                newchar.setName(name);
-                newchar.setHair(hair);
-                newchar.setFace(face);
-                
-                newchar.setLevel(recipe.getLevel());
-                newchar.setJob(recipe.getJob());
-                newchar.setMapId(recipe.getMap());
-                
-                MapleInventory equipped = newchar.getInventory(MapleInventoryType.EQUIPPED);
-                MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-                
-                int top = recipe.getTop(), bottom = recipe.getBottom(), shoes = recipe.getShoes(), weapon = recipe.getWeapon();
-                
-                if(top > 0) {
-                    Item eq_top = ii.getEquipById(top);
-                    eq_top.setPosition((byte) -5);
-                    equipped.addItemFromDB(eq_top);
-                }
-                
-                if(bottom > 0) {
-                    Item eq_bottom = ii.getEquipById(bottom);
-                    eq_bottom.setPosition((byte) -6);
-                    equipped.addItemFromDB(eq_bottom);
-                }
-                
-                if(shoes > 0) {
-                    Item eq_shoes = ii.getEquipById(shoes);
-                    eq_shoes.setPosition((byte) -7);
-                    equipped.addItemFromDB(eq_shoes);
-                }
-                
-                if(weapon > 0) {
-                    Item eq_weapon = ii.getEquipById(weapon);
-                    eq_weapon.setPosition((byte) -11);
-                    equipped.addItemFromDB(eq_weapon.copy());
-                }
-                
-                if (!newchar.insertNewChar(recipe)) {
-                        return -2;
-                }
-                c.announce(MaplePacketCreator.addNewCharEntry(newchar));
-                
-                Server.getInstance().createCharacterEntry(newchar);
-                Server.getInstance().broadcastGMMessage(c.getWorld(), MaplePacketCreator.sendYellowTip("[New Char]: " + c.getAccountName() + " has created a new character with IGN " + name));
-                FilePrinter.print(FilePrinter.CREATED_CHAR + c.getAccountName() + ".txt", c.getAccountName() + " created character with IGN " + name);
-                
-                return 0;
-        }        
+    private static final Logger log = LoggerFactory.getLogger(CharacterFactory.class);
+
+    protected synchronized static int createNewCharacter(Client c, String name, int face, int hair, int skin, int gender, CharacterFactoryRecipe recipe) {
+        if (YamlConfig.config.server.COLLECTIVE_CHARSLOT ? c.getAvailableCharacterSlots() <= 0 : c.getAvailableCharacterWorldSlots() <= 0) {
+            return -3;
+        }
+
+        if (!Character.canCreateChar(name)) {
+            return -1;
+        }
+
+        Character newCharacter = Character.getDefault(c);
+        newCharacter.setWorld(c.getWorld());
+        newCharacter.setSkinColor(SkinColor.getById(skin));
+        newCharacter.setGender(gender);
+        newCharacter.setName(name);
+        newCharacter.setHair(hair);
+        newCharacter.setFace(face);
+
+        newCharacter.setLevel(recipe.getLevel());
+        newCharacter.setJob(recipe.getJob());
+        newCharacter.setMapId(recipe.getMap());
+
+        Inventory equipped = newCharacter.getInventory(InventoryType.EQUIPPED);
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+
+        int top = recipe.getTop(), bottom = recipe.getBottom(), shoes = recipe.getShoes(), weapon = recipe.getWeapon();
+
+        if (top > 0) {
+            Item eq_top = ii.getEquipById(top);
+            eq_top.setPosition((byte) -5);
+            equipped.addItemFromDB(eq_top);
+        }
+
+        if (bottom > 0) {
+            Item eq_bottom = ii.getEquipById(bottom);
+            eq_bottom.setPosition((byte) -6);
+            equipped.addItemFromDB(eq_bottom);
+        }
+
+        if (shoes > 0) {
+            Item eq_shoes = ii.getEquipById(shoes);
+            eq_shoes.setPosition((byte) -7);
+            equipped.addItemFromDB(eq_shoes);
+        }
+
+        if (weapon > 0) {
+            Item eq_weapon = ii.getEquipById(weapon);
+            eq_weapon.setPosition((byte) -11);
+            equipped.addItemFromDB(eq_weapon.copy());
+        }
+
+        if (!MakeCharInfoValidator.isNewCharacterValid(newCharacter)) {
+            log.warn("Owner from account {} tried to packet edit in character creation", c.getAccountName());
+            return -2;
+        }
+
+        if (!newCharacter.insertNewChar(recipe)) {
+            return -2;
+        }
+        c.sendPacket(PacketCreator.addNewCharEntry(newCharacter));
+
+        Server.getInstance().createCharacterEntry(newCharacter);
+        Server.getInstance().broadcastGMMessage(c.getWorld(), PacketCreator.sendYellowTip("[New Char]: " + c.getAccountName() + " has created a new character with IGN " + name));
+        log.info("Account {} created chr with name {}", c.getAccountName(), name);
+
+        return 0;
+    }
 }

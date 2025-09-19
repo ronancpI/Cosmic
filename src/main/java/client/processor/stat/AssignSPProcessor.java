@@ -23,51 +23,52 @@
 */
 package client.processor.stat;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.Skill;
 import client.SkillFactory;
 import client.autoban.AutobanFactory;
 import constants.game.GameConstants;
 import constants.skills.Aran;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.PacketCreator;
 
 /**
- *
  * @author RonanLana - synchronization of SP transaction modules
  */
 public class AssignSPProcessor {
-    
-    public static boolean canSPAssign(MapleClient c, int skillid) {
+    private static final Logger log = LoggerFactory.getLogger(AssignSPProcessor.class);
+
+    public static boolean canSPAssign(Client c, int skillid) {
         if (skillid == Aran.HIDDEN_FULL_DOUBLE || skillid == Aran.HIDDEN_FULL_TRIPLE || skillid == Aran.HIDDEN_OVER_DOUBLE || skillid == Aran.HIDDEN_OVER_TRIPLE) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return false;
         }
 
-        MapleCharacter player = c.getPlayer();
+        Character player = c.getPlayer();
         if ((!GameConstants.isPqSkillMap(player.getMapId()) && GameConstants.isPqSkill(skillid)) || (!player.isGM() && GameConstants.isGMSkills(skillid)) || (!GameConstants.isInJobTree(skillid, player.getJob().getId()) && !player.isGM())) {
             AutobanFactory.PACKET_EDIT.alert(player, "tried to packet edit in distributing sp.");
-            FilePrinter.printError(FilePrinter.EXPLOITS + c.getPlayer().getName() + ".txt", c.getPlayer().getName() + " tried to use skill " + skillid + " without it being in their job.");
+            log.warn("Chr {} tried to use skill {} without it being in their job.", c.getPlayer().getName(), skillid);
 
             c.disconnect(true, false);
             return false;
         }
-        
+
         return true;
     }
-    
-    public static void SPAssignAction(MapleClient c, int skillid) {
+
+    public static void SPAssignAction(Client c, int skillid) {
         c.lockClient();
         try {
             if (!canSPAssign(c, skillid)) {
                 return;
             }
-            
-            MapleCharacter player = c.getPlayer();
-            int remainingSp = player.getRemainingSps()[GameConstants.getSkillBook(skillid/10000)];
+
+            Character player = c.getPlayer();
+            int remainingSp = player.getRemainingSps()[GameConstants.getSkillBook(skillid / 10000)];
             boolean isBeginnerSkill = false;
-            
+
             if (skillid % 10000000 > 999 && skillid % 10000000 < 1003) {
                 int total = 0;
                 for (int i = 0; i < 3; i++) {
@@ -75,23 +76,23 @@ public class AssignSPProcessor {
                 }
                 remainingSp = Math.min((player.getLevel() - 1), 6) - total;
                 isBeginnerSkill = true;
-            }  		
+            }
             Skill skill = SkillFactory.getSkill(skillid);
             int curLevel = player.getSkillLevel(skill);
             if ((remainingSp > 0 && curLevel + 1 <= (skill.isFourthJob() ? player.getMasterLevel(skill) : skill.getMaxLevel()))) {
                 if (!isBeginnerSkill) {
-                    player.gainSp(-1, GameConstants.getSkillBook(skillid/10000), false);
+                    player.gainSp(-1, GameConstants.getSkillBook(skillid / 10000), false);
                 } else {
-                    player.announce(MaplePacketCreator.enableActions());
+                    player.sendPacket(PacketCreator.enableActions());
                 }
                 if (skill.getId() == Aran.FULL_SWING) {
                     player.changeSkillLevel(skill, (byte) (curLevel + 1), player.getMasterLevel(skill), player.getSkillExpiration(skill));
-                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_FULL_DOUBLE), player.getSkillLevel(skill), player.getMasterLevel(skill),  player.getSkillExpiration(skill));
-                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_FULL_TRIPLE), player.getSkillLevel(skill), player.getMasterLevel(skill),  player.getSkillExpiration(skill));
+                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_FULL_DOUBLE), player.getSkillLevel(skill), player.getMasterLevel(skill), player.getSkillExpiration(skill));
+                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_FULL_TRIPLE), player.getSkillLevel(skill), player.getMasterLevel(skill), player.getSkillExpiration(skill));
                 } else if (skill.getId() == Aran.OVER_SWING) {
                     player.changeSkillLevel(skill, (byte) (curLevel + 1), player.getMasterLevel(skill), player.getSkillExpiration(skill));
-                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_OVER_DOUBLE), player.getSkillLevel(skill), player.getMasterLevel(skill),  player.getSkillExpiration(skill));
-                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_OVER_TRIPLE), player.getSkillLevel(skill), player.getMasterLevel(skill),  player.getSkillExpiration(skill));
+                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_OVER_DOUBLE), player.getSkillLevel(skill), player.getMasterLevel(skill), player.getSkillExpiration(skill));
+                    player.changeSkillLevel(SkillFactory.getSkill(Aran.HIDDEN_OVER_TRIPLE), player.getSkillLevel(skill), player.getMasterLevel(skill), player.getSkillExpiration(skill));
                 } else {
                     player.changeSkillLevel(skill, (byte) (curLevel + 1), player.getMasterLevel(skill), player.getSkillExpiration(skill));
                 }

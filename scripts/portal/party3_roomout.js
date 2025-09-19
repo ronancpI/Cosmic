@@ -33,6 +33,7 @@ function enter(pi) {
                 break;
         }
 
-        pi.playPortalSound(); pi.warp(920010100, exitPortal);
+        pi.playPortalSound();
+        pi.warp(920010100, exitPortal);
         return true;
 }

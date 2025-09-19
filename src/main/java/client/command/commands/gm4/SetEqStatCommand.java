@@ -23,12 +23,12 @@
 */
 package client.command.commands.gm4;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import client.inventory.Equip;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import constants.inventory.ItemConstants;
 
 public class SetEqStatCommand extends Command {
@@ -37,8 +37,8 @@ public class SetEqStatCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !seteqstat <stat value> [<spdjmp value>]");
             return;
@@ -46,12 +46,14 @@ public class SetEqStatCommand extends Command {
 
         short newStat = (short) Math.max(0, Integer.parseInt(params[0]));
         short newSpdJmp = params.length >= 2 ? (short) Integer.parseInt(params[1]) : 0;
-        MapleInventory equip = player.getInventory(MapleInventoryType.EQUIP);
-        
+        Inventory equip = player.getInventory(InventoryType.EQUIP);
+
         for (byte i = 1; i <= equip.getSlotLimit(); i++) {
             try {
                 Equip eq = (Equip) equip.getItem(i);
-                if (eq == null) continue;
+                if (eq == null) {
+                    continue;
+                }
 
                 eq.setWdef(newStat);
                 eq.setAcc(newStat);

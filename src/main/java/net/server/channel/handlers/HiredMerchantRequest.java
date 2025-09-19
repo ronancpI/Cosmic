@@ -21,63 +21,62 @@
 */
 package net.server.channel.handlers;
 
+import client.Character;
+import client.Client;
 import client.inventory.ItemFactory;
-import client.MapleCharacter;
+import constants.game.GameConstants;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.maps.MapObject;
+import server.maps.MapObjectType;
+import server.maps.PlayerShop;
+import server.maps.Portal;
+import tools.PacketCreator;
+
+import java.awt.*;
 import java.sql.SQLException;
 import java.util.Arrays;
-import client.MapleClient;
-import constants.game.GameConstants;
-import java.awt.Point;
-import net.AbstractMaplePacketHandler;
-import server.maps.MaplePortal;
-import server.maps.MapleMapObject;
-import server.maps.MapleMapObjectType;
-import server.maps.MaplePlayerShop;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
 
 /**
- *
  * @author XoticStory
  */
-public final class HiredMerchantRequest extends AbstractMaplePacketHandler {
+public final class HiredMerchantRequest extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
-        
-        try {
-            for (MapleMapObject mmo : chr.getMap().getMapObjectsInRange(chr.getPosition(), 23000, Arrays.asList(MapleMapObjectType.HIRED_MERCHANT, MapleMapObjectType.PLAYER))) {
-                if (mmo instanceof MapleCharacter) {
-                    MapleCharacter mc = (MapleCharacter) mmo;
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
 
-                    MaplePlayerShop shop = mc.getPlayerShop();
+        try {
+            for (MapObject mmo : chr.getMap().getMapObjectsInRange(chr.getPosition(), 23000, Arrays.asList(MapObjectType.HIRED_MERCHANT, MapObjectType.PLAYER))) {
+                if (mmo instanceof Character mc) {
+
+                    PlayerShop shop = mc.getPlayerShop();
                     if (shop != null && shop.isOwner(mc)) {
-                        chr.announce(MaplePacketCreator.getMiniRoomError(13));
+                        chr.sendPacket(PacketCreator.getMiniRoomError(13));
                         return;
                     }
                 } else {
-                    chr.announce(MaplePacketCreator.getMiniRoomError(13));
+                    chr.sendPacket(PacketCreator.getMiniRoomError(13));
                     return;
                 }
             }
 
             Point cpos = chr.getPosition();
-            MaplePortal portal = chr.getMap().findClosestTeleportPortal(cpos);
+            Portal portal = chr.getMap().findClosestTeleportPortal(cpos);
             if (portal != null && portal.getPosition().distance(cpos) < 120.0) {
-                chr.announce(MaplePacketCreator.getMiniRoomError(10));
+                chr.sendPacket(PacketCreator.getMiniRoomError(10));
                 return;
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+
         if (GameConstants.isFreeMarketRoom(chr.getMapId())) {
             if (!chr.hasMerchant()) {
                 try {
                     if (ItemFactory.MERCHANT.loadItems(chr.getId(), false).isEmpty() && chr.getMerchantMeso() == 0) {
-                        c.announce(MaplePacketCreator.hiredMerchantBox());
+                        c.sendPacket(PacketCreator.hiredMerchantBox());
                     } else {
-                        chr.announce(MaplePacketCreator.retrieveFirstMessage());
+                        chr.sendPacket(PacketCreator.retrieveFirstMessage());
                     }
                 } catch (SQLException ex) {
                     ex.printStackTrace();

@@ -23,11 +23,14 @@
 */
 package client.command.commands.gm2;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
+import constants.id.MapId;
 import server.maps.MapleMap;
-import server.maps.MaplePortal;
+import server.maps.Portal;
+
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 public class JailCommand extends Command {
     {
@@ -35,8 +38,8 @@ public class JailCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !jail <playername> [<minutes>]");
             return;
@@ -51,15 +54,13 @@ public class JailCommand extends Command {
             }
         }
 
-        MapleCharacter victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
+        Character victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
         if (victim != null) {
-            victim.addJailExpirationTime(minutesJailed * 60 * 1000);
+            victim.addJailExpirationTime(MINUTES.toMillis(minutesJailed));
 
-            int mapid = 300000012;
-
-            if (victim.getMapId() != mapid) {    // those gone to jail won't be changing map anyway
-                MapleMap target = c.getChannelServer().getMapFactory().getMap(mapid);
-                MaplePortal targetPortal = target.getPortal(0);
+            if (victim.getMapId() != MapId.JAIL) {    // those gone to jail won't be changing map anyway
+                MapleMap target = c.getChannelServer().getMapFactory().getMap(MapId.JAIL);
+                Portal targetPortal = target.getPortal(0);
                 victim.saveLocationOnWarp();
                 victim.changeMap(target, targetPortal);
                 player.message(victim.getName() + " was jailed for " + minutesJailed + " minutes.");

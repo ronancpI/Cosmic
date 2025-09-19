@@ -23,44 +23,214 @@
 */
 package client.command;
 
-import client.MapleClient;
-import client.command.commands.gm0.*;
-import client.command.commands.gm1.*;
-import client.command.commands.gm2.*;
-import client.command.commands.gm3.*;
-import client.command.commands.gm4.*;
-import client.command.commands.gm5.*;
-import client.command.commands.gm6.*;
-import tools.FilePrinter;
+import client.Client;
+import client.command.commands.gm0.ChangeLanguageCommand;
+import client.command.commands.gm0.DisposeCommand;
+import client.command.commands.gm0.DropLimitCommand;
+import client.command.commands.gm0.EnableAuthCommand;
+import client.command.commands.gm0.EquipLvCommand;
+import client.command.commands.gm0.GachaCommand;
+import client.command.commands.gm0.GmCommand;
+import client.command.commands.gm0.HelpCommand;
+import client.command.commands.gm0.JoinEventCommand;
+import client.command.commands.gm0.LeaveEventCommand;
+import client.command.commands.gm0.MapOwnerClaimCommand;
+import client.command.commands.gm0.OnlineCommand;
+import client.command.commands.gm0.RanksCommand;
+import client.command.commands.gm0.RatesCommand;
+import client.command.commands.gm0.ReadPointsCommand;
+import client.command.commands.gm0.ReportBugCommand;
+import client.command.commands.gm0.ShowRatesCommand;
+import client.command.commands.gm0.StaffCommand;
+import client.command.commands.gm0.StatDexCommand;
+import client.command.commands.gm0.StatIntCommand;
+import client.command.commands.gm0.StatLukCommand;
+import client.command.commands.gm0.StatStrCommand;
+import client.command.commands.gm0.TimeCommand;
+import client.command.commands.gm0.ToggleExpCommand;
+import client.command.commands.gm0.UptimeCommand;
+import client.command.commands.gm1.BossHpCommand;
+import client.command.commands.gm1.BuffMeCommand;
+import client.command.commands.gm1.GotoCommand;
+import client.command.commands.gm1.MobHpCommand;
+import client.command.commands.gm1.WhatDropsFromCommand;
+import client.command.commands.gm1.WhoDropsCommand;
+import client.command.commands.gm2.ApCommand;
+import client.command.commands.gm2.BombCommand;
+import client.command.commands.gm2.BuffCommand;
+import client.command.commands.gm2.BuffMapCommand;
+import client.command.commands.gm2.ClearDropsCommand;
+import client.command.commands.gm2.ClearSavedLocationsCommand;
+import client.command.commands.gm2.ClearSlotCommand;
+import client.command.commands.gm2.DcCommand;
+import client.command.commands.gm2.EmpowerMeCommand;
+import client.command.commands.gm2.GachaListCommand;
+import client.command.commands.gm2.GmShopCommand;
+import client.command.commands.gm2.HealCommand;
+import client.command.commands.gm2.HideCommand;
+import client.command.commands.gm2.IdCommand;
+import client.command.commands.gm2.ItemCommand;
+import client.command.commands.gm2.ItemDropCommand;
+import client.command.commands.gm2.JailCommand;
+import client.command.commands.gm2.JobCommand;
+import client.command.commands.gm2.LevelCommand;
+import client.command.commands.gm2.LevelProCommand;
+import client.command.commands.gm2.LootCommand;
+import client.command.commands.gm2.MaxSkillCommand;
+import client.command.commands.gm2.MaxStatCommand;
+import client.command.commands.gm2.MobSkillCommand;
+import client.command.commands.gm2.ReachCommand;
+import client.command.commands.gm2.RechargeCommand;
+import client.command.commands.gm2.ResetSkillCommand;
+import client.command.commands.gm2.SearchCommand;
+import client.command.commands.gm2.SetSlotCommand;
+import client.command.commands.gm2.SetStatCommand;
+import client.command.commands.gm2.SpCommand;
+import client.command.commands.gm2.SummonCommand;
+import client.command.commands.gm2.UnBugCommand;
+import client.command.commands.gm2.UnHideCommand;
+import client.command.commands.gm2.UnJailCommand;
+import client.command.commands.gm2.WarpAreaCommand;
+import client.command.commands.gm2.WarpCommand;
+import client.command.commands.gm2.WarpMapCommand;
+import client.command.commands.gm2.WhereaMiCommand;
+import client.command.commands.gm3.BanCommand;
+import client.command.commands.gm3.ChatCommand;
+import client.command.commands.gm3.CheckDmgCommand;
+import client.command.commands.gm3.ClosePortalCommand;
+import client.command.commands.gm3.DebuffCommand;
+import client.command.commands.gm3.EndEventCommand;
+import client.command.commands.gm3.ExpedsCommand;
+import client.command.commands.gm3.FaceCommand;
+import client.command.commands.gm3.FameCommand;
+import client.command.commands.gm3.FlyCommand;
+import client.command.commands.gm3.GiveMesosCommand;
+import client.command.commands.gm3.GiveNxCommand;
+import client.command.commands.gm3.GiveRpCommand;
+import client.command.commands.gm3.GiveVpCommand;
+import client.command.commands.gm3.HairCommand;
+import client.command.commands.gm3.HealMapCommand;
+import client.command.commands.gm3.HealPersonCommand;
+import client.command.commands.gm3.HpMpCommand;
+import client.command.commands.gm3.HurtCommand;
+import client.command.commands.gm3.IgnoreCommand;
+import client.command.commands.gm3.IgnoredCommand;
+import client.command.commands.gm3.InMapCommand;
+import client.command.commands.gm3.KillAllCommand;
+import client.command.commands.gm3.KillCommand;
+import client.command.commands.gm3.KillMapCommand;
+import client.command.commands.gm3.MaxEnergyCommand;
+import client.command.commands.gm3.MaxHpMpCommand;
+import client.command.commands.gm3.MonitorCommand;
+import client.command.commands.gm3.MonitorsCommand;
+import client.command.commands.gm3.MusicCommand;
+import client.command.commands.gm3.MuteMapCommand;
+import client.command.commands.gm3.NightCommand;
+import client.command.commands.gm3.NoticeCommand;
+import client.command.commands.gm3.NpcCommand;
+import client.command.commands.gm3.OnlineTwoCommand;
+import client.command.commands.gm3.OpenPortalCommand;
+import client.command.commands.gm3.PeCommand;
+import client.command.commands.gm3.PosCommand;
+import client.command.commands.gm3.QuestCompleteCommand;
+import client.command.commands.gm3.QuestResetCommand;
+import client.command.commands.gm3.QuestStartCommand;
+import client.command.commands.gm3.ReloadDropsCommand;
+import client.command.commands.gm3.ReloadEventsCommand;
+import client.command.commands.gm3.ReloadMapCommand;
+import client.command.commands.gm3.ReloadPortalsCommand;
+import client.command.commands.gm3.ReloadShopsCommand;
+import client.command.commands.gm3.RipCommand;
+import client.command.commands.gm3.SeedCommand;
+import client.command.commands.gm3.SpawnCommand;
+import client.command.commands.gm3.StartEventCommand;
+import client.command.commands.gm3.StartMapEventCommand;
+import client.command.commands.gm3.StopMapEventCommand;
+import client.command.commands.gm3.TimerAllCommand;
+import client.command.commands.gm3.TimerCommand;
+import client.command.commands.gm3.TimerMapCommand;
+import client.command.commands.gm3.ToggleCouponCommand;
+import client.command.commands.gm3.UnBanCommand;
+import client.command.commands.gm4.BossDropRateCommand;
+import client.command.commands.gm4.CakeCommand;
+import client.command.commands.gm4.DropRateCommand;
+import client.command.commands.gm4.ExpRateCommand;
+import client.command.commands.gm4.FishingRateCommand;
+import client.command.commands.gm4.ForceVacCommand;
+import client.command.commands.gm4.HorntailCommand;
+import client.command.commands.gm4.ItemVacCommand;
+import client.command.commands.gm4.MesoRateCommand;
+import client.command.commands.gm4.PapCommand;
+import client.command.commands.gm4.PianusCommand;
+import client.command.commands.gm4.PinkbeanCommand;
+import client.command.commands.gm4.PlayerNpcCommand;
+import client.command.commands.gm4.PlayerNpcRemoveCommand;
+import client.command.commands.gm4.PmobCommand;
+import client.command.commands.gm4.PmobRemoveCommand;
+import client.command.commands.gm4.PnpcCommand;
+import client.command.commands.gm4.PnpcRemoveCommand;
+import client.command.commands.gm4.ProItemCommand;
+import client.command.commands.gm4.QuestRateCommand;
+import client.command.commands.gm4.ServerMessageCommand;
+import client.command.commands.gm4.SetEqStatCommand;
+import client.command.commands.gm4.TravelRateCommand;
+import client.command.commands.gm4.ZakumCommand;
+import client.command.commands.gm5.DebugCommand;
+import client.command.commands.gm5.IpListCommand;
+import client.command.commands.gm5.SetCommand;
+import client.command.commands.gm5.ShowMoveLifeCommand;
+import client.command.commands.gm5.ShowPacketsCommand;
+import client.command.commands.gm5.ShowSessionsCommand;
+import client.command.commands.gm6.ClearQuestCacheCommand;
+import client.command.commands.gm6.ClearQuestCommand;
+import client.command.commands.gm6.DCAllCommand;
+import client.command.commands.gm6.DevtestCommand;
+import client.command.commands.gm6.EraseAllPNpcsCommand;
+import client.command.commands.gm6.GetAccCommand;
+import client.command.commands.gm6.MapPlayersCommand;
+import client.command.commands.gm6.SaveAllCommand;
+import client.command.commands.gm6.ServerAddChannelCommand;
+import client.command.commands.gm6.ServerAddWorldCommand;
+import client.command.commands.gm6.ServerRemoveChannelCommand;
+import client.command.commands.gm6.ServerRemoveWorldCommand;
+import client.command.commands.gm6.SetGmLevelCommand;
+import client.command.commands.gm6.ShutdownCommand;
+import client.command.commands.gm6.SpawnAllPNpcsCommand;
+import client.command.commands.gm6.SupplyRateCouponCommand;
+import client.command.commands.gm6.WarpWorldCommand;
+import constants.id.MapId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.Pair;
 
-import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 
 public class CommandsExecutor {
-    
-    public static CommandsExecutor instance = new CommandsExecutor();
-    
+    private static final Logger log = LoggerFactory.getLogger(CommandsExecutor.class);
+    private static final CommandsExecutor instance = new CommandsExecutor();
+    private static final char USER_HEADING = '@';
+    private static final char GM_HEADING = '!';
+
+    private final HashMap<String, Command> registeredCommands = new HashMap<>();
+    private final List<Pair<List<String>, List<String>>> commandsNameDesc = new ArrayList<>();
+    private Pair<List<String>, List<String>> levelCommandsCursor;
+
     public static CommandsExecutor getInstance() {
         return instance;
     }
-    
-    private static final char USER_HEADING = '@';
-    private static final char GM_HEADING = '!';
-    
-    public static boolean isCommand(MapleClient client, String content){
+
+    public static boolean isCommand(Client client, String content) {
         char heading = content.charAt(0);
-        if (client.getPlayer().isGM()){
+        if (client.getPlayer().isGM()) {
             return heading == USER_HEADING || heading == GM_HEADING;
         }
         return heading == USER_HEADING;
     }
 
-    private HashMap<String, Command> registeredCommands = new HashMap<>();
-    private Pair<List<String>, List<String>> levelCommandsCursor;
-    private List<Pair<List<String>, List<String>>> commandsNameDesc = new ArrayList<>();
-
-    private CommandsExecutor(){
+    private CommandsExecutor() {
         registerLv0Commands();
         registerLv1Commands();
         registerLv2Commands();
@@ -73,8 +243,8 @@ public class CommandsExecutor {
     public List<Pair<List<String>, List<String>>> getGmCommands() {
         return commandsNameDesc;
     }
-    
-    public void handle(MapleClient client, String message){
+
+    public void handle(Client client, String message) {
         if (client.tryacquireClient()) {
             try {
                 handleInternal(client, message);
@@ -85,9 +255,9 @@ public class CommandsExecutor {
             client.getPlayer().dropMessage(5, "Try again in a while... Latest commands are currently being processed.");
         }
     }
-    
-    private void handleInternal(MapleClient client, String message){
-        if (client.getPlayer().getMapId() == 300000012) {
+
+    private void handleInternal(Client client, String message) {
+        if (client.getPlayer().getMapId() == MapId.JAIL) {
             client.getPlayer().yellowMessage("You do not have permission to use commands while in jail.");
             return;
         }
@@ -96,17 +266,17 @@ public class CommandsExecutor {
         if (splitedMessage.length < 2) {
             splitedMessage = new String[]{splitedMessage[0], ""};
         }
-        
+
         client.getPlayer().setLastCommandMessage(splitedMessage[1]);    // thanks Tochi & Nulliphite for noticing string messages being marshalled lowercase
         final String commandName = splitedMessage[0].toLowerCase();
         final String[] lowercaseParams = splitedMessage[1].toLowerCase().split(splitRegex);
-        
+
         final Command command = registeredCommands.get(commandName);
-        if (command == null){
+        if (command == null) {
             client.getPlayer().yellowMessage("Command '" + commandName + "' is not available. See @commands for a list of available commands.");
             return;
         }
-        if (client.getPlayer().gmLevel() < command.getRank()){
+        if (client.getPlayer().gmLevel() < command.getRank()) {
             client.getPlayer().yellowMessage("You do not have permission to use this command.");
             return;
         }
@@ -116,77 +286,69 @@ public class CommandsExecutor {
         } else {
             params = new String[]{};
         }
-        
-        command.execute(client, params);
-        writeLog(client, message);
-    }
 
-    private void writeLog(MapleClient client, String command){
-        SimpleDateFormat sdf = new SimpleDateFormat("dd-MM-yyyy HH:mm");
-        FilePrinter.print(FilePrinter.USED_COMMANDS, client.getPlayer().getName() + " used: " + command + " on "
-                + sdf.format(Calendar.getInstance().getTime()));
+        command.execute(client, params);
+        log.info("Chr {} used command {}", client.getPlayer().getName(), command.getClass().getSimpleName());
     }
 
     private void addCommandInfo(String name, Class<? extends Command> commandClass) {
         try {
-            levelCommandsCursor.getRight().add(commandClass.newInstance().getDescription());
+            levelCommandsCursor.getRight().add(commandClass.getDeclaredConstructor().newInstance().getDescription());
             levelCommandsCursor.getLeft().add(name);
-        } catch(Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
-    
-    private void addCommand(String[] syntaxs, Class<? extends Command> commandClass){
-        for (String syntax : syntaxs){
+
+    private void addCommand(String[] syntaxs, Class<? extends Command> commandClass) {
+        for (String syntax : syntaxs) {
             addCommand(syntax, 0, commandClass);
         }
     }
-    private void addCommand(String syntax, Class<? extends Command> commandClass){
+
+    private void addCommand(String syntax, Class<? extends Command> commandClass) {
         //for (String syntax : syntaxs){
-            addCommand(syntax, 0, commandClass);
+        addCommand(syntax, 0, commandClass);
         //}
     }
 
-    private void addCommand(String[] surtaxes, int rank, Class<? extends Command> commandClass){
-        for (String syntax : surtaxes){
+    private void addCommand(String[] surtaxes, int rank, Class<? extends Command> commandClass) {
+        for (String syntax : surtaxes) {
             addCommand(syntax, rank, commandClass);
         }
     }
 
-    private void addCommand(String syntax, int rank,  Class<? extends Command> commandClass){
-        if (registeredCommands.containsKey(syntax.toLowerCase())){
-            System.out.println("Error on register command with name: " + syntax + ". Already exists.");
+    private void addCommand(String syntax, int rank, Class<? extends Command> commandClass) {
+        if (registeredCommands.containsKey(syntax.toLowerCase())) {
+            log.warn("Error on register command with name: {}. Already exists.", syntax);
             return;
         }
-        
+
         String commandName = syntax.toLowerCase();
         addCommandInfo(commandName, commandClass);
-        
+
         try {
-            Command commandInstance = commandClass.newInstance();     // thanks Halcyon for noticing commands getting reinstanced every call
+            Command commandInstance = commandClass.getDeclaredConstructor().newInstance();     // thanks Halcyon for noticing commands getting reinstanced every call
             commandInstance.setRank(rank);
-            
+
             registeredCommands.put(commandName, commandInstance);
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.warn("Failed to create command instance", e);
         }
     }
 
-    private void registerLv0Commands(){
+    private void registerLv0Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand(new String[]{"help", "commands"}, HelpCommand.class);
         addCommand("droplimit", DropLimitCommand.class);
         addCommand("time", TimeCommand.class);
         addCommand("credits", StaffCommand.class);
-        addCommand("buyback", BuyBackCommand.class);
         addCommand("uptime", UptimeCommand.class);
         addCommand("gacha", GachaCommand.class);
         addCommand("dispose", DisposeCommand.class);
         addCommand("changel", ChangeLanguageCommand.class);
-        addCommand("equiplv",  EquipLvCommand.class);
+        addCommand("equiplv", EquipLvCommand.class);
         addCommand("showrates", ShowRatesCommand.class);
         addCommand("rates", RatesCommand.class);
         addCommand("online", OnlineCommand.class);
@@ -205,26 +367,26 @@ public class CommandsExecutor {
         addCommand("mylawn", MapOwnerClaimCommand.class);
         addCommand("bosshp", BossHpCommand.class);
         addCommand("mobhp", MobHpCommand.class);
-        
+
         commandsNameDesc.add(levelCommandsCursor);
     }
 
 
     private void registerLv1Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand("whatdropsfrom", 1, WhatDropsFromCommand.class);
         addCommand("whodrops", 1, WhoDropsCommand.class);
         addCommand("buffme", 1, BuffMeCommand.class);
         addCommand("goto", 1, GotoCommand.class);
-        
+
         commandsNameDesc.add(levelCommandsCursor);
     }
 
 
-    private void registerLv2Commands(){
+    private void registerLv2Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand("recharge", 2, RechargeCommand.class);
         addCommand("whereami", 2, WhereaMiCommand.class);
         addCommand("hide", 2, HideCommand.class);
@@ -261,13 +423,14 @@ public class CommandsExecutor {
         addCommand("id", 2, IdCommand.class);
         addCommand("gachalist", GachaListCommand.class);
         addCommand("loot", LootCommand.class);
-        
+        addCommand("mobskill", MobSkillCommand.class);
+
         commandsNameDesc.add(levelCommandsCursor);
     }
 
     private void registerLv3Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand("debuff", 3, DebuffCommand.class);
         addCommand("fly", 3, FlyCommand.class);
         addCommand("spawn", 3, SpawnCommand.class);
@@ -331,9 +494,9 @@ public class CommandsExecutor {
         commandsNameDesc.add(levelCommandsCursor);
     }
 
-    private void registerLv4Commands(){
+    private void registerLv4Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand("servermessage", 4, ServerMessageCommand.class);
         addCommand("proitem", 4, ProItemCommand.class);
         addCommand("seteqstat", 4, SetEqStatCommand.class);
@@ -358,26 +521,26 @@ public class CommandsExecutor {
         addCommand("pnpcremove", 4, PnpcRemoveCommand.class);
         addCommand("pmob", 4, PmobCommand.class);
         addCommand("pmobremove", 4, PmobRemoveCommand.class);
-        
+
         commandsNameDesc.add(levelCommandsCursor);
     }
 
-    private void registerLv5Commands(){
+    private void registerLv5Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand("debug", 5, DebugCommand.class);
         addCommand("set", 5, SetCommand.class);
         addCommand("showpackets", 5, ShowPacketsCommand.class);
         addCommand("showmovelife", 5, ShowMoveLifeCommand.class);
         addCommand("showsessions", 5, ShowSessionsCommand.class);
         addCommand("iplist", 5, IpListCommand.class);
-        
+
         commandsNameDesc.add(levelCommandsCursor);
     }
 
-    private void registerLv6Commands(){
+    private void registerLv6Commands() {
         levelCommandsCursor = new Pair<>(new ArrayList<String>(), new ArrayList<String>());
-        
+
         addCommand("setgmlevel", 6, SetGmLevelCommand.class);
         addCommand("warpworld", 6, WarpWorldCommand.class);
         addCommand("saveall", 6, SaveAllCommand.class);
@@ -394,7 +557,8 @@ public class CommandsExecutor {
         addCommand("addworld", 6, ServerAddWorldCommand.class);
         addCommand("removechannel", 6, ServerRemoveChannelCommand.class);
         addCommand("removeworld", 6, ServerRemoveWorldCommand.class);
-        
+        addCommand("devtest", 6, DevtestCommand.class);
+
         commandsNameDesc.add(levelCommandsCursor);
     }
 

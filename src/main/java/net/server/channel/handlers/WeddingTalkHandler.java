@@ -20,34 +20,33 @@
 
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import scripting.event.EventInstanceManager;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
-import tools.packets.Wedding;
+import tools.PacketCreator;
+import tools.packets.WeddingPackets;
 
 /**
- *
  * @author Ronan
  */
-public final class WeddingTalkHandler extends AbstractMaplePacketHandler {
-    
+public final class WeddingTalkHandler extends AbstractPacketHandler {
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        byte action = slea.readByte();
-        if(action == 1) {
+    public final void handlePacket(InPacket p, Client c) {
+        byte action = p.readByte();
+        if (action == 1) {
             EventInstanceManager eim = c.getPlayer().getEventInstance();
-            
-            if(eim != null && !(c.getPlayer().getId() == eim.getIntProperty("groomId") || c.getPlayer().getId() == eim.getIntProperty("brideId"))) {
-                c.announce(Wedding.OnWeddingProgress(false, 0, 0, (byte) 2));
+
+            if (eim != null && !(c.getPlayer().getId() == eim.getIntProperty("groomId") || c.getPlayer().getId() == eim.getIntProperty("brideId"))) {
+                c.sendPacket(WeddingPackets.OnWeddingProgress(false, 0, 0, (byte) 2));
             } else {
-                c.announce(Wedding.OnWeddingProgress(true, 0, 0, (byte) 3));
+                c.sendPacket(WeddingPackets.OnWeddingProgress(true, 0, 0, (byte) 3));
             }
         } else {
-            c.announce(Wedding.OnWeddingProgress(true, 0, 0, (byte) 3));
+            c.sendPacket(WeddingPackets.OnWeddingProgress(true, 0, 0, (byte) 3));
         }
-        
-        c.announce(MaplePacketCreator.enableActions());
+
+        c.sendPacket(PacketCreator.enableActions());
     }
 }

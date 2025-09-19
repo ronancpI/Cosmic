@@ -23,10 +23,11 @@
 */
 package client.command.commands.gm0;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import server.events.gm.MapleEvent;
+import constants.id.MapId;
+import server.events.gm.Event;
 import server.maps.FieldLimit;
 
 public class JoinEventCommand extends Command {
@@ -35,17 +36,18 @@ public class JoinEventCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        if(!FieldLimit.CANNOTMIGRATE.check(player.getMap().getFieldLimit())) {
-            MapleEvent event = c.getChannelServer().getEvent();
-            if(event != null) {
-                if(event.getMapId() != player.getMapId()) {
-                    if(event.getLimit() > 0) {
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        if (!FieldLimit.CANNOTMIGRATE.check(player.getMap().getFieldLimit())) {
+            Event event = c.getChannelServer().getEvent();
+            if (event != null) {
+                if (event.getMapId() != player.getMapId()) {
+                    if (event.getLimit() > 0) {
                         player.saveLocation("EVENT");
 
-                        if(event.getMapId() == 109080000 || event.getMapId() == 109060001)
+                        if (event.getMapId() == MapId.EVENT_COCONUT_HARVEST || event.getMapId() == MapId.EVENT_SNOWBALL_ENTRANCE) {
                             player.setTeam(event.getLimit() % 2);
+                        }
 
                         event.minusLimit();
 

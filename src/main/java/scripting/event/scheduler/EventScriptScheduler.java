@@ -21,10 +21,6 @@ package scripting.event.scheduler;
 
 import config.YamlConfig;
 import net.server.Server;
-import net.server.audit.LockCollector;
-import net.server.audit.locks.MonitoredLockType;
-import net.server.audit.locks.MonitoredReentrantLock;
-import net.server.audit.locks.factory.MonitoredReentrantLockFactory;
 import server.ThreadManager;
 import server.TimerManager;
 
@@ -34,24 +30,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- *
  * @author Ronan
  */
 public class EventScriptScheduler {
 
     private boolean disposed = false;
     private int idleProcs = 0;
-    private Map<Runnable, Long> registeredEntries = new HashMap<>();
+    private final Map<Runnable, Long> registeredEntries = new HashMap<>();
 
     private ScheduledFuture<?> schedulerTask = null;
-    private MonitoredReentrantLock schedulerLock;
-    private Runnable monitorTask = () -> runBaseSchedule();
-
-    public EventScriptScheduler() {
-        schedulerLock = MonitoredReentrantLockFactory.createLock(MonitoredLockType.EM_SCHDL, true);
-    }
+    private final Lock schedulerLock = new ReentrantLock(true);
+    private final Runnable monitorTask = () -> runBaseSchedule();
 
     private void runBaseSchedule() {
         List<Runnable> toRemove;
@@ -149,16 +142,6 @@ public class EventScriptScheduler {
             } finally {
                 schedulerLock.unlock();
             }
-
-            disposeLocks();
         });
-    }
-
-    private void disposeLocks() {
-        LockCollector.getInstance().registerDisposeAction(() -> emptyLocks());
-    }
-
-    private void emptyLocks() {
-        schedulerLock = schedulerLock.dispose();
     }
 }

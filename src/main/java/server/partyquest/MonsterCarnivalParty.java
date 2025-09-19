@@ -1,39 +1,40 @@
 package server.partyquest;
 
-import client.MapleCharacter;
+import client.Character;
+import server.maps.MapleMap;
+import tools.PacketCreator;
+
 import java.util.LinkedList;
 import java.util.List;
-import server.maps.MapleMap;
-import tools.MaplePacketCreator;
 
 /**
  * @author Rob
  */
 public class MonsterCarnivalParty {
 
-    private List<MapleCharacter> members = new LinkedList<>();
-    private MapleCharacter leader;
-    private byte team;
+    private List<Character> members = new LinkedList<>();
+    private final Character leader;
+    private final byte team;
     private short availableCP = 0, totalCP = 0;
     private int summons = 8;
     private boolean winner = false;
 
-    public MonsterCarnivalParty(final MapleCharacter owner, final List<MapleCharacter> members1, final byte team1) {
+    public MonsterCarnivalParty(final Character owner, final List<Character> members1, final byte team1) {
         leader = owner;
         members = members1;
         team = team1;
 
-        for (final MapleCharacter chr : members) {
+        for (final Character chr : members) {
             chr.setMonsterCarnivalParty(this);
             chr.setTeam(team);
         }
     }
 
-    public final MapleCharacter getLeader() {
+    public final Character getLeader() {
         return leader;
     }
 
-    public void addCP(MapleCharacter player, int ammount) {
+    public void addCP(Character player, int ammount) {
         totalCP += ammount;
         availableCP += ammount;
         player.addCP(ammount);
@@ -47,12 +48,12 @@ public class MonsterCarnivalParty {
         return availableCP;
     }
 
-    public void useCP(MapleCharacter player, int ammount) {
+    public void useCP(Character player, int ammount) {
         availableCP -= ammount;
         player.useCP(ammount);
     }
 
-    public List<MapleCharacter> getMembers() {
+    public List<Character> getMembers() {
         return members;
     }
 
@@ -61,7 +62,7 @@ public class MonsterCarnivalParty {
     }
 
     public void warpOut(final int map) {
-        for (MapleCharacter chr : members) {
+        for (Character chr : members) {
             chr.changeMap(map, 0);
             chr.setMonsterCarnivalParty(null);
             chr.setMonsterCarnival(null);
@@ -70,21 +71,22 @@ public class MonsterCarnivalParty {
     }
 
     public void warp(final MapleMap map, final int portalid) {
-        for (MapleCharacter chr : members) {
+        for (Character chr : members) {
             chr.changeMap(map, map.getPortal(portalid));
         }
     }
 
     public void warpOut() {
-        if (winner == true)
+        if (winner == true) {
             warpOut(980000003 + (leader.getMonsterCarnival().getRoom() * 100));
-        else
+        } else {
             warpOut(980000004 + (leader.getMonsterCarnival().getRoom() * 100));
+        }
     }
 
     public boolean allInMap(MapleMap map) {
         boolean status = true;
-        for (MapleCharacter chr : members) {
+        for (Character chr : members) {
             if (chr.getMap() != map) {
                 status = false;
             }
@@ -92,7 +94,7 @@ public class MonsterCarnivalParty {
         return status;
     }
 
-    public void removeMember(MapleCharacter chr) {
+    public void removeMember(Character chr) {
         members.remove(chr);
         chr.changeMap(980000010);
         chr.setMonsterCarnivalParty(null);
@@ -110,8 +112,8 @@ public class MonsterCarnivalParty {
     public void displayMatchResult() {
         final String effect = winner ? "quest/carnival/win" : "quest/carnival/lose";
 
-        for (final MapleCharacter chr : members) {
-            chr.announce(MaplePacketCreator.showEffect(effect));
+        for (final Character chr : members) {
+            chr.sendPacket(PacketCreator.showEffect(effect));
         }
     }
 

@@ -21,187 +21,231 @@
  */
 package client.processor.npc;
 
-import client.MapleClient;
-import client.MapleCharacter;
+import client.Character;
+import client.Client;
 import client.autoban.AutobanFactory;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
-import client.inventory.manipulator.MapleKarmaManipulator;
+import client.inventory.manipulator.InventoryManipulator;
+import client.inventory.manipulator.KarmaManipulator;
 import config.YamlConfig;
+import constants.id.ItemId;
 import constants.inventory.ItemConstants;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import server.MapleItemInformationProvider;
-import server.MapleStorage;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.packet.InPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
+import server.Storage;
+import tools.PacketCreator;
 
 /**
- *
  * @author Matze
  * @author Ronan - inventory concurrency protection on storing items
  */
 public class StorageProcessor {
-    
-        public static void storageAction(SeekableLittleEndianAccessor slea, MapleClient c) {
-                MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-                MapleCharacter chr = c.getPlayer();
-                MapleStorage storage = chr.getStorage();
-                byte mode = slea.readByte();
+    private static final Logger log = LoggerFactory.getLogger(StorageProcessor.class);
 
-                if (chr.getLevel() < 15){
-                        chr.dropMessage(1, "You may only use the storage once you have reached level 15.");
-                        c.announce(MaplePacketCreator.enableActions());
-                        return;
-                }
-                
-                if (c.tryacquireClient()) {
-                        try {
-                                if (mode == 4) { // take out
-                                        byte type = slea.readByte();
-                                        byte slot = slea.readByte();
-                                        if (slot < 0 || slot > storage.getSlots()) { // removal starts at zero
-                                                AutobanFactory.PACKET_EDIT.alert(c.getPlayer(), c.getPlayer().getName() + " tried to packet edit with storage.");
-                                                FilePrinter.print(FilePrinter.EXPLOITS + c.getPlayer().getName() + ".txt", c.getPlayer().getName() + " tried to work with storage slot " + slot);
-                                                c.disconnect(true, false);
-                                                return;
-                                        }
-                                        slot = storage.getSlot(MapleInventoryType.getByType(type), slot);
-                                        Item item = storage.getItem(slot);
-                                        if (item != null) {
-                                                if (ii.isPickupRestricted(item.getItemId()) && chr.haveItemWithId(item.getItemId(), true)) {
-                                                        c.announce(MaplePacketCreator.getStorageError((byte) 0x0C));
-                                                        return;
-                                                }
+    public static void storageAction(InPacket p, Client c) {
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        Character chr = c.getPlayer();
+        Storage storage = chr.getStorage();
+        String gmBlockedStorageMessage = "You cannot use the storage as a GM of this level.";
 
-                                                int takeoutFee = storage.getTakeOutFee();
-                                                if (chr.getMeso() < takeoutFee) {
-                                                        c.announce(MaplePacketCreator.getStorageError((byte) 0x0B));
-                                                        return;
-                                                } else {
-                                                        chr.gainMeso(-takeoutFee, false);
-                                                }
+        byte mode = p.readByte();
 
-                                                if (MapleInventoryManipulator.checkSpace(c, item.getItemId(), item.getQuantity(), item.getOwner())) {                
-                                                        if (storage.takeOut(item)) {
-                                                                chr.setUsedStorage();
-                                                                
-                                                                MapleKarmaManipulator.toggleKarmaFlagToUntradeable(item);
-                                                                MapleInventoryManipulator.addFromDrop(c, item, false);
-
-                                                                String itemName = ii.getName(item.getItemId());
-                                                                FilePrinter.print(FilePrinter.STORAGE + c.getAccountName() + ".txt", c.getPlayer().getName() + " took out " + item.getQuantity() + " " + itemName + " (" + item.getItemId() + ")");
-
-                                                                storage.sendTakenOut(c, item.getInventoryType());
-                                                        } else {
-                                                                c.announce(MaplePacketCreator.enableActions());
-                                                                return;
-                                                        }
-                                                } else {
-                                                        c.announce(MaplePacketCreator.getStorageError((byte) 0x0A));
-                                                }
-                                        }
-                                } else if (mode == 5) { // store
-                                        short slot = slea.readShort();
-                                        int itemId = slea.readInt();
-                                        short quantity = slea.readShort();
-                                        MapleInventoryType invType = ItemConstants.getInventoryType(itemId);
-                                        MapleInventory inv = chr.getInventory(invType);
-                                        if (slot < 1 || slot > inv.getSlotLimit()) { //player inv starts at one
-                                                AutobanFactory.PACKET_EDIT.alert(c.getPlayer(), c.getPlayer().getName() + " tried to packet edit with storage.");
-                                                FilePrinter.print(FilePrinter.EXPLOITS + c.getPlayer().getName() + ".txt", c.getPlayer().getName() + " tried to store item at slot " + slot);
-                                                c.disconnect(true, false);
-                                                return;
-                                        }
-                                        if (quantity < 1) {
-                                                c.announce(MaplePacketCreator.enableActions());
-                                                return;
-                                        }
-                                        if (storage.isFull()) {
-                                                c.announce(MaplePacketCreator.getStorageError((byte) 0x11));
-                                                return;
-                                        }
-
-                                        int storeFee = storage.getStoreFee();
-                                        if (chr.getMeso() < storeFee) {
-                                                c.announce(MaplePacketCreator.getStorageError((byte) 0x0B));
-                                        } else {
-                                                Item item;
-                                                
-                                                inv.lockInventory();    // thanks imbee for pointing a dupe within storage
-                                                try {
-                                                        item = inv.getItem(slot);
-                                                        if (item != null && item.getItemId() == itemId && (item.getQuantity() >= quantity || ItemConstants.isRechargeable(itemId))) {
-                                                                if (ItemConstants.isWeddingRing(itemId) || ItemConstants.isWeddingToken(itemId)) {
-                                                                        c.announce(MaplePacketCreator.enableActions());
-                                                                        return;
-                                                                }
-                                                                
-                                                                if (ItemConstants.isRechargeable(itemId)) {
-                                                                        quantity = item.getQuantity();
-                                                                }
-                                                                
-                                                                MapleInventoryManipulator.removeFromSlot(c, invType, slot, quantity, false);
-                                                        } else {
-                                                                c.announce(MaplePacketCreator.enableActions());
-                                                                return;
-                                                        }
-                                                        
-                                                        item = item.copy();     // thanks Robin Schulz & BHB88 for noticing a inventory glitch when storing items
-                                                } finally {
-                                                        inv.unlockInventory();
-                                                }
-                                                
-                                                chr.gainMeso(-storeFee, false, true, false);
-                                                
-                                                MapleKarmaManipulator.toggleKarmaFlagToUntradeable(item);
-                                                item.setQuantity(quantity);
-                                                
-                                                storage.store(item);    // inside a critical section, "!(storage.isFull())" is still in effect...
-                                                chr.setUsedStorage();
-                                                
-                                                String itemName = ii.getName(item.getItemId());
-                                                FilePrinter.print(FilePrinter.STORAGE + c.getAccountName() + ".txt", c.getPlayer().getName() + " stored " + item.getQuantity() + " " + itemName + " (" + item.getItemId() + ")");
-                                                
-                                                storage.sendStored(c, ItemConstants.getInventoryType(itemId));
-                                        }
-                                } else if (mode == 6) { // arrange items
-                                        if(YamlConfig.config.server.USE_STORAGE_ITEM_SORT) storage.arrangeItems(c);
-                                        c.announce(MaplePacketCreator.enableActions());
-                                } else if (mode == 7) { // meso
-                                        int meso = slea.readInt();
-                                        int storageMesos = storage.getMeso();
-                                        int playerMesos = chr.getMeso();
-                                        if ((meso > 0 && storageMesos >= meso) || (meso < 0 && playerMesos >= -meso)) {
-                                                if (meso < 0 && (storageMesos - meso) < 0) {
-                                                        meso = Integer.MIN_VALUE + storageMesos;
-                                                        if (meso < playerMesos) {
-                                                                c.announce(MaplePacketCreator.enableActions());
-                                                                return;
-                                                        }
-                                                } else if (meso > 0 && (playerMesos + meso) < 0) {
-                                                        meso = Integer.MAX_VALUE - playerMesos;
-                                                        if (meso > storageMesos) {
-                                                                c.announce(MaplePacketCreator.enableActions());
-                                                                return;
-                                                        }
-                                                }
-                                                storage.setMeso(storageMesos - meso);
-                                                chr.gainMeso(meso, false, true, false);
-                                                chr.setUsedStorage();
-                                                FilePrinter.print(FilePrinter.STORAGE + c.getPlayer().getName() + ".txt", c.getPlayer().getName() + (meso > 0 ? " took out " : " stored ") + Math.abs(meso) + " mesos");
-                                                storage.sendMeso(c);
-                                        } else {
-                                                c.announce(MaplePacketCreator.enableActions());
-                                                return;
-                                        }
-                                } else if (mode == 8) {// close... unless the player decides to enter cash shop!
-                                        storage.close();
-                                }
-                        } finally {
-                                c.releaseClient();
-                        }
-                }
+        if (chr.getLevel() < 15) {
+            chr.dropMessage(1, "You may only use the storage once you have reached level 15.");
+            c.sendPacket(PacketCreator.enableActions());
+            return;
         }
+
+        if (c.tryacquireClient()) {
+            try {
+                switch (mode) {
+                case 4: { // Take out
+                    byte type = p.readByte();
+                    byte slot = p.readByte();
+                    if (slot < 0 || slot > storage.getSlots()) { // removal starts at zero
+                        AutobanFactory.PACKET_EDIT.alert(c.getPlayer(), c.getPlayer().getName() + " tried to packet edit with storage.");
+                        log.warn("Chr {} tried to work with storage slot {}", c.getPlayer().getName(), slot);
+                        c.disconnect(true, false);
+                        return;
+                    }
+
+                    slot = storage.getSlot(InventoryType.getByType(type), slot);
+                    Item item = storage.getItem(slot);
+
+                    if (hasGMRestrictions(chr)) {
+                        chr.dropMessage(1, gmBlockedStorageMessage);
+                        log.info(String.format("GM %s blocked from using storage", chr.getName()));
+                        chr.sendPacket(PacketCreator.enableActions());
+                        return;
+                    }
+
+                    if (item != null) {
+                        if (ii.isPickupRestricted(item.getItemId()) && chr.haveItemWithId(item.getItemId(), true)) {
+                            c.sendPacket(PacketCreator.getStorageError((byte) 0x0C));
+                            return;
+                        }
+
+                        int takeoutFee = storage.getTakeOutFee();
+                        if (chr.getMeso() < takeoutFee) {
+                            c.sendPacket(PacketCreator.getStorageError((byte) 0x0B));
+                            return;
+                        } else {
+                            chr.gainMeso(-takeoutFee, false);
+                        }
+
+                        if (InventoryManipulator.checkSpace(c, item.getItemId(), item.getQuantity(), item.getOwner())) {
+                            if (storage.takeOut(item)) {
+                                chr.setUsedStorage();
+
+                                KarmaManipulator.toggleKarmaFlagToUntradeable(item);
+                                InventoryManipulator.addFromDrop(c, item, false);
+
+                                String itemName = ii.getName(item.getItemId());
+                                log.debug("Chr {} took out {}x {} ({})", c.getPlayer().getName(), item.getQuantity(), itemName, item.getItemId());
+
+                                storage.sendTakenOut(c, item.getInventoryType());
+                            } else {
+                                c.sendPacket(PacketCreator.enableActions());
+                                return;
+                            }
+                        } else {
+                            c.sendPacket(PacketCreator.getStorageError((byte) 0x0A));
+                        }
+                    }
+                    break;
+                }
+                case 5: { // Store
+                    short slot = p.readShort();
+                    int itemId = p.readInt();
+                    short quantity = p.readShort();
+                    InventoryType invType = ItemConstants.getInventoryType(itemId);
+                    Inventory inv = chr.getInventory(invType);
+                    if (slot < 1 || slot > inv.getSlotLimit()) { // player inv starts at one
+                        AutobanFactory.PACKET_EDIT.alert(c.getPlayer(),
+                                c.getPlayer().getName() + " tried to packet edit with storage.");
+                        log.warn("Chr {} tried to store item at slot {}", c.getPlayer().getName(), slot);
+                        c.disconnect(true, false);
+                        return;
+                    }
+
+                    if (hasGMRestrictions(chr)) {
+                        chr.dropMessage(1, gmBlockedStorageMessage);
+                        log.info(String.format("GM %s blocked from using storage", chr.getName()));
+                        chr.sendPacket(PacketCreator.enableActions());
+                        return;
+                    }
+
+                    if (quantity < 1) {
+                        c.sendPacket(PacketCreator.enableActions());
+                        return;
+                    }
+                    if (storage.isFull()) {
+                        c.sendPacket(PacketCreator.getStorageError((byte) 0x11));
+                        return;
+                    }
+                    int storeFee = storage.getStoreFee();
+                    if (chr.getMeso() < storeFee) {
+                        c.sendPacket(PacketCreator.getStorageError((byte) 0x0B));
+                    } else {
+                        Item item;
+
+                        inv.lockInventory(); // thanks imbee for pointing a dupe within storage
+                        try {
+                            item = inv.getItem(slot);
+                            if (item != null && item.getItemId() == itemId
+                                    && (item.getQuantity() >= quantity || ItemConstants.isRechargeable(itemId))) {
+                                if (ItemId.isWeddingRing(itemId) || ItemId.isWeddingToken(itemId)) {
+                                    c.sendPacket(PacketCreator.enableActions());
+                                    return;
+                                }
+
+                                if (ItemConstants.isRechargeable(itemId)) {
+                                    quantity = item.getQuantity();
+                                }
+
+                                InventoryManipulator.removeFromSlot(c, invType, slot, quantity, false);
+                            } else {
+                                c.sendPacket(PacketCreator.enableActions());
+                                return;
+                            }
+
+                            item = item.copy(); // thanks Robin Schulz & BHB88 for noticing a inventory glitch when storing items
+                        } finally {
+                            inv.unlockInventory();
+                        }
+
+                        chr.gainMeso(-storeFee, false, true, false);
+
+                        KarmaManipulator.toggleKarmaFlagToUntradeable(item);
+                        item.setQuantity(quantity);
+
+                        storage.store(item); // inside a critical section, "!(storage.isFull())" is still in effect...
+                        chr.setUsedStorage();
+
+                        String itemName = ii.getName(item.getItemId());
+                        log.debug("Chr {} stored {}x {} ({})", c.getPlayer().getName(), item.getQuantity(), itemName, item.getItemId());
+                        storage.sendStored(c, ItemConstants.getInventoryType(itemId));
+                    }
+                    break;
+                }
+                case 6: // Arrange items
+                    if (YamlConfig.config.server.USE_STORAGE_ITEM_SORT) {
+                        storage.arrangeItems(c);
+                    }
+                    c.sendPacket(PacketCreator.enableActions());
+                    break;
+                case 7: { // Mesos
+                    int meso = p.readInt();
+                    int storageMesos = storage.getMeso();
+                    int playerMesos = chr.getMeso();
+
+                    if (hasGMRestrictions(chr)) {
+                        chr.dropMessage(1, gmBlockedStorageMessage);
+                        log.info(String.format("GM %s blocked from using storage", chr.getName()));
+                        chr.sendPacket(PacketCreator.enableActions());
+                        return;
+                    }
+
+                    if ((meso > 0 && storageMesos >= meso) || (meso < 0 && playerMesos >= -meso)) {
+                        if (meso < 0 && (storageMesos - meso) < 0) {
+                            meso = Integer.MIN_VALUE + storageMesos;
+                            if (meso < playerMesos) {
+                                c.sendPacket(PacketCreator.enableActions());
+                                return;
+                            }
+                        } else if (meso > 0 && (playerMesos + meso) < 0) {
+                            meso = Integer.MAX_VALUE - playerMesos;
+                            if (meso > storageMesos) {
+                                c.sendPacket(PacketCreator.enableActions());
+                                return;
+                            }
+                        }
+                        storage.setMeso(storageMesos - meso);
+                        chr.gainMeso(meso, false, true, false);
+                        chr.setUsedStorage();
+                        log.debug("Chr {} {} {} mesos", c.getPlayer().getName(), meso > 0 ? "took out" : "stored", Math.abs(meso));
+                        storage.sendMeso(c);
+                    } else {
+                        c.sendPacket(PacketCreator.enableActions());
+                        return;
+                    }
+                    break;
+                }
+                case 8: // Close (unless the player decides to enter cash shop)
+                    storage.close();
+                    break;
+                }
+            } finally {
+                c.releaseClient();
+            }
+        }
+    }
+
+    private static boolean hasGMRestrictions(Character character) {
+        return character.isGM() && character.gmLevel() < YamlConfig.config.server.MINIMUM_GM_LEVEL_TO_USE_STORAGE;
+    }
 }

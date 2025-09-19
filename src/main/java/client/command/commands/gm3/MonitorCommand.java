@@ -23,39 +23,34 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
+import net.packet.logging.MonitoredChrLogger;
 import net.server.Server;
-import tools.MapleLogger;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 public class MonitorCommand extends Command {
     {
-        setDescription("Toggle logging the packets of a player.");
+        setDescription("Toggle monitored packet logging of a character.");
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !monitor <ign>");
             return;
         }
-        MapleCharacter victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
+        Character victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
         if (victim == null) {
             player.message("Player '" + params[0] + "' could not be found on this world.");
             return;
         }
-        boolean monitored = MapleLogger.monitored.contains(victim.getId());
-        if (monitored) {
-            MapleLogger.monitored.remove(victim.getId());
-        } else {
-            MapleLogger.monitored.add(victim.getId());
-        }
-        player.yellowMessage(victim.getId() + " is " + (!monitored ? "now being monitored." : "no longer being monitored."));
-        String message = player.getName() + (!monitored ? " has started monitoring " : " has stopped monitoring ") + victim.getId() + ".";
-        Server.getInstance().broadcastGMMessage(c.getWorld(), MaplePacketCreator.serverNotice(5, message));
+        boolean monitored = MonitoredChrLogger.toggleMonitored(victim.getId());
+        player.yellowMessage(victim.getId() + " is " + (monitored ? "now being monitored." : "no longer being monitored."));
+        String message = player.getName() + (monitored ? " has started monitoring " : " has stopped monitoring ") + victim.getId() + ".";
+        Server.getInstance().broadcastGMMessage(c.getWorld(), PacketCreator.serverNotice(5, message));
 
     }
 }

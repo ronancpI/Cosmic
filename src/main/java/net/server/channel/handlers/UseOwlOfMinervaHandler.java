@@ -19,12 +19,12 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import constants.game.GameConstants;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
+import client.Client;
+import constants.id.ItemId;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
 
 import java.util.Comparator;
 import java.util.LinkedList;
@@ -34,31 +34,31 @@ import java.util.PriorityQueue;
 /**
  * @author Ronan
  */
-public final class UseOwlOfMinervaHandler extends AbstractMaplePacketHandler {
+public final class UseOwlOfMinervaHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
+    public final void handlePacket(InPacket p, Client c) {
         List<Pair<Integer, Integer>> owlSearched = c.getWorldServer().getOwlSearchedItems();
         List<Integer> owlLeaderboards;
-        
-        if(owlSearched.size() < 5) {
+
+        if (owlSearched.size() < 5) {
             owlLeaderboards = new LinkedList<>();
-            for(int i : GameConstants.OWL_DATA) {
-                owlLeaderboards.add(i);
+            for (int itemId : ItemId.getOwlItems()) {
+                owlLeaderboards.add(itemId);
             }
         } else {
             // descending order
             Comparator<Pair<Integer, Integer>> comparator = (p1, p2) -> p2.getRight().compareTo(p1.getRight());
-            
+
             PriorityQueue<Pair<Integer, Integer>> queue = new PriorityQueue<>(Math.max(1, owlSearched.size()), comparator);
             queue.addAll(owlSearched);
-            
+
             owlLeaderboards = new LinkedList<>();
-            for(int i = 0; i < Math.min(owlSearched.size(), 10); i++) {
+            for (int i = 0; i < Math.min(owlSearched.size(), 10); i++) {
                 owlLeaderboards.add(queue.remove().getLeft());
             }
         }
-        
-        c.announce(MaplePacketCreator.getOwlOpen(owlLeaderboards));
+
+        c.sendPacket(PacketCreator.getOwlOpen(owlLeaderboards));
     }
 }

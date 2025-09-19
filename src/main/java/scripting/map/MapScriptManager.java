@@ -21,41 +21,34 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package scripting.map;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import java.lang.reflect.UndeclaredThrowableException;
+import client.Character;
+import client.Client;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import scripting.AbstractScriptManager;
+
+import javax.script.Invocable;
+import javax.script.ScriptException;
 import java.util.HashMap;
 import java.util.Map;
-import javax.script.ScriptEngineFactory;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
-import jdk.nashorn.api.scripting.NashornScriptEngine;
-import scripting.AbstractScriptManager;
-import tools.FilePrinter;
 
 public class MapScriptManager extends AbstractScriptManager {
+    private static final Logger log = LoggerFactory.getLogger(MapScriptManager.class);
+    private static final MapScriptManager instance = new MapScriptManager();
 
-    private static MapScriptManager instance = new MapScriptManager();
-    
+    private final Map<String, Invocable> scripts = new HashMap<>();
+
     public static MapScriptManager getInstance() {
         return instance;
-    }
-    
-    private Map<String, NashornScriptEngine> scripts = new HashMap<>();
-    private ScriptEngineFactory sef;
-
-    private MapScriptManager() {
-        ScriptEngineManager sem = new ScriptEngineManager();
-        sef = sem.getEngineByName("javascript").getFactory();
     }
 
     public void reloadScripts() {
         scripts.clear();
     }
 
-    public boolean runMapScript(MapleClient c, String mapScriptPath, boolean firstUser) {
+    public boolean runMapScript(Client c, String mapScriptPath, boolean firstUser) {
         if (firstUser) {
-            MapleCharacter chr = c.getPlayer();
+            Character chr = c.getPlayer();
             int mapid = chr.getMapId();
             if (chr.hasEntered(mapScriptPath, mapid)) {
                 return false;
@@ -63,8 +56,8 @@ public class MapScriptManager extends AbstractScriptManager {
                 chr.enteredScript(mapScriptPath, mapid);
             }
         }
-        
-        NashornScriptEngine iv = scripts.get(mapScriptPath);
+
+        Invocable iv = scripts.get(mapScriptPath);
         if (iv != null) {
             try {
                 iv.invokeFunction("start", new MapScriptMethods(c));
@@ -73,22 +66,20 @@ public class MapScriptManager extends AbstractScriptManager {
                 e.printStackTrace();
             }
         }
-        
+
         try {
-            iv = getScriptEngine("map/" + mapScriptPath + ".js");
+            iv = (Invocable) getInvocableScriptEngine("map/" + mapScriptPath + ".js");
             if (iv == null) {
                 return false;
             }
-            
+
             scripts.put(mapScriptPath, iv);
             iv.invokeFunction("start", new MapScriptMethods(c));
             return true;
-        } catch (final UndeclaredThrowableException | ScriptException ute) {
-            FilePrinter.printError(FilePrinter.MAP_SCRIPT + mapScriptPath + ".txt", ute);
         } catch (final Exception e) {
-            FilePrinter.printError(FilePrinter.MAP_SCRIPT + mapScriptPath + ".txt", e);
+            log.error("Error running map script {}", mapScriptPath, e);
         }
-        
+
         return false;
     }
 }

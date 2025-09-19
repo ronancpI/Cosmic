@@ -22,18 +22,17 @@
 
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
 /**
- *
  * @author kevintjuh93
  */
-public class LeftKnockbackHandler extends AbstractMaplePacketHandler {
-        public void handlePacket(SeekableLittleEndianAccessor slea, final MapleClient c) {
-            c.announce(MaplePacketCreator.leftKnockBack());
-            c.announce(MaplePacketCreator.enableActions());
-        }
+public class LeftKnockbackHandler extends AbstractPacketHandler {
+    public void handlePacket(InPacket p, final Client c) {
+        c.sendPacket(PacketCreator.leftKnockBack());
+        c.sendPacket(PacketCreator.enableActions());
+    }
 }

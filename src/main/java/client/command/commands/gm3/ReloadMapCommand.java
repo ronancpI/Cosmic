@@ -23,8 +23,8 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import server.maps.MapleMap;
 
@@ -36,18 +36,19 @@ public class ReloadMapCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         MapleMap newMap = c.getChannelServer().getMapFactory().resetMap(player.getMapId());
         int callerid = c.getPlayer().getId();
 
-        Collection<MapleCharacter> characters = player.getMap().getAllPlayers();
-        
-        for (MapleCharacter chr : characters) {
+        Collection<Character> characters = player.getMap().getAllPlayers();
+
+        for (Character chr : characters) {
             chr.saveLocationOnWarp();
             chr.changeMap(newMap);
-            if (chr.getId() != callerid)
+            if (chr.getId() != callerid) {
                 chr.dropMessage("You have been relocated due to map reloading. Sorry for the inconvenience.");
+            }
         }
         newMap.respawn();
     }

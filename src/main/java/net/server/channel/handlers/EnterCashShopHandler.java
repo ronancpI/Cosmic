@@ -21,41 +21,40 @@
 
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
-import server.maps.MapleMiniDungeonInfo;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import server.maps.MiniDungeonInfo;
+import tools.PacketCreator;
 
 /**
- *
  * @author Flav
  */
-public class EnterCashShopHandler extends AbstractMaplePacketHandler {
+public class EnterCashShopHandler extends AbstractPacketHandler {
     @Override
-    public void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
+    public void handlePacket(InPacket p, Client c) {
         try {
-            MapleCharacter mc = c.getPlayer();
+            Character mc = c.getPlayer();
 
             if (mc.cannotEnterCashShop()) {
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
-            if(mc.getEventInstance() != null) {
-                c.announce(MaplePacketCreator.serverNotice(5, "Entering Cash Shop or MTS are disabled when registered on an event."));
-                c.announce(MaplePacketCreator.enableActions());
+
+            if (mc.getEventInstance() != null) {
+                c.sendPacket(PacketCreator.serverNotice(5, "Entering Cash Shop or MTS are disabled when registered on an event."));
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
-            if(MapleMiniDungeonInfo.isDungeonMap(mc.getMapId())) {
-                c.announce(MaplePacketCreator.serverNotice(5, "Changing channels or entering Cash Shop or MTS are disabled when inside a Mini-Dungeon."));
-                c.announce(MaplePacketCreator.enableActions());
+
+            if (MiniDungeonInfo.isDungeonMap(mc.getMapId())) {
+                c.sendPacket(PacketCreator.serverNotice(5, "Changing channels or entering Cash Shop or MTS are disabled when inside a Mini-Dungeon."));
+                c.sendPacket(PacketCreator.enableActions());
                 return;
             }
-            
+
             if (mc.getCashShop().isOpened()) {
                 return;
             }
@@ -75,15 +74,15 @@ public class EnterCashShopHandler extends AbstractMaplePacketHandler {
             mc.cancelDiseaseExpireTask();
             mc.cancelSkillCooldownTask();
             mc.cancelExpirationTask();
-            
+
             mc.forfeitExpirableQuests();
             mc.cancelQuestExpirationTask();
-            
-            c.announce(MaplePacketCreator.openCashShop(c, false));
-            c.announce(MaplePacketCreator.showCashInventory(c));
-            c.announce(MaplePacketCreator.showGifts(mc.getCashShop().loadGifts()));
-            c.announce(MaplePacketCreator.showWishList(mc, false));
-            c.announce(MaplePacketCreator.showCash(mc));
+
+            c.sendPacket(PacketCreator.openCashShop(c, false));
+            c.sendPacket(PacketCreator.showCashInventory(c));
+            c.sendPacket(PacketCreator.showGifts(mc.getCashShop().loadGifts()));
+            c.sendPacket(PacketCreator.showWishList(mc, false));
+            c.sendPacket(PacketCreator.showCash(mc));
 
             c.getChannelServer().removePlayer(mc);
             mc.getMap().removePlayer(mc);

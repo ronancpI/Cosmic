@@ -19,55 +19,67 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import client.MapleFamily;
-import client.MapleFamilyEntry;
+import client.Client;
+import client.Family;
+import client.FamilyEntry;
 import config.YamlConfig;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
-public class FamilySeparateHandler extends AbstractMaplePacketHandler {
+public class FamilySeparateHandler extends AbstractPacketHandler {
 
     @Override
-    public void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        if(!YamlConfig.config.server.USE_FAMILY_SYSTEM) return;
-        MapleFamily oldFamily = c.getPlayer().getFamily();
-        if(oldFamily == null) return;
-        MapleFamilyEntry forkOn = null;
+    public void handlePacket(InPacket p, Client c) {
+        if (!YamlConfig.config.server.USE_FAMILY_SYSTEM) {
+            return;
+        }
+        Family oldFamily = c.getPlayer().getFamily();
+        if (oldFamily == null) {
+            return;
+        }
+        FamilyEntry forkOn = null;
         boolean isSenior;
-        if(slea.available() > 0) { //packet 0x95 doesn't send id, since there is only one senior
-            forkOn = c.getPlayer().getFamily().getEntryByID(slea.readInt());
-            if(!c.getPlayer().getFamilyEntry().isJunior(forkOn)) return; //packet editing?
+        if (p.available() > 0) { //packet 0x95 doesn't send id, since there is only one senior
+            forkOn = c.getPlayer().getFamily().getEntryByID(p.readInt());
+            if (!c.getPlayer().getFamilyEntry().isJunior(forkOn)) {
+                return; //packet editing?
+            }
             isSenior = true;
         } else {
             forkOn = c.getPlayer().getFamilyEntry();
             isSenior = false;
         }
-        if(forkOn == null) return;
-        
-        MapleFamilyEntry senior = forkOn.getSenior();
-        if(senior == null) return;
+        if (forkOn == null) {
+            return;
+        }
+
+        FamilyEntry senior = forkOn.getSenior();
+        if (senior == null) {
+            return;
+        }
         int levelDiff = Math.abs(c.getPlayer().getLevel() - senior.getLevel());
         int cost = 2500 * levelDiff;
         cost += levelDiff * levelDiff;
-        if(c.getPlayer().getMeso() < cost) {
-            c.announce(MaplePacketCreator.sendFamilyMessage(isSenior ? 81 : 80, cost));
+        if (c.getPlayer().getMeso() < cost) {
+            c.sendPacket(PacketCreator.sendFamilyMessage(isSenior ? 81 : 80, cost));
             return;
         }
         c.getPlayer().gainMeso(-cost);
         int repCost = separateRepCost(forkOn);
         senior.gainReputation(-repCost, false);
-        if(senior.getSenior() != null) senior.getSenior().gainReputation(-(repCost/2), false);
-        forkOn.announceToSenior(MaplePacketCreator.serverNotice(5, forkOn.getName() + " has left the family."), true);
+        if (senior.getSenior() != null) {
+            senior.getSenior().gainReputation(-(repCost / 2), false);
+        }
+        forkOn.announceToSenior(PacketCreator.serverNotice(5, forkOn.getName() + " has left the family."), true);
         forkOn.fork();
-        c.announce(MaplePacketCreator.getFamilyInfo(forkOn)); //pedigree info will be requested from the client if the window is open
+        c.sendPacket(PacketCreator.getFamilyInfo(forkOn)); //pedigree info will be requested from the client if the window is open
         forkOn.updateSeniorFamilyInfo(true);
-        c.announce(MaplePacketCreator.sendFamilyMessage(1, 0));
+        c.sendPacket(PacketCreator.sendFamilyMessage(1, 0));
     }
-    
-    
-    private static int separateRepCost(MapleFamilyEntry junior) {
+
+
+    private static int separateRepCost(FamilyEntry junior) {
         int level = junior.getLevel();
         int ret = level / 20;
         ret += 10;

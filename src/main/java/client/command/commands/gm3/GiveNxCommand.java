@@ -23,8 +23,8 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 
 public class GiveNxCommand extends Command {
@@ -33,8 +33,8 @@ public class GiveNxCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !givenx [nx, mp, np] [<playername>] <gainnx>");
             return;
@@ -55,7 +55,7 @@ public class GiveNxCommand extends Command {
                         type = 1;
                 }
                 typeStr = params[0];
-                
+
                 if (params.length > 2) {
                     recv = params[1];
                     value = Integer.parseInt(params[2]);
@@ -72,7 +72,7 @@ public class GiveNxCommand extends Command {
             value = Integer.parseInt(params[0]);
         }
 
-        MapleCharacter victim = c.getWorldServer().getPlayerStorage().getCharacterByName(recv);
+        Character victim = c.getWorldServer().getPlayerStorage().getCharacterByName(recv);
         if (victim != null) {
             victim.getCashShop().gainCash(type, value);
             player.message(typeStr.toUpperCase() + " given.");

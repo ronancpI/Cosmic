@@ -21,7 +21,7 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
+import client.Client;
 import constants.skills.Bishop;
 import constants.skills.Bowmaster;
 import constants.skills.Brawler;
@@ -39,18 +39,22 @@ import constants.skills.NightWalker;
 import constants.skills.Paladin;
 import constants.skills.ThunderBreaker;
 import constants.skills.WindArcher;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.PacketCreator;
 
-public final class SkillEffectHandler extends AbstractMaplePacketHandler {
+public final class SkillEffectHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(SkillEffectHandler.class);
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int skillId = slea.readInt();
-        int level = slea.readByte();
-        byte flags = slea.readByte();
-        int speed = slea.readByte();
-        byte aids = slea.readByte();//Mmmk
+    public void handlePacket(InPacket p, Client c) {
+        int skillId = p.readInt();
+        int level = p.readByte();
+        byte flags = p.readByte();
+        int speed = p.readByte();
+        byte aids = p.readByte();//Mmmk
         switch (skillId) {
             case FPMage.EXPLOSION:
             case FPArchMage.BIG_BANG:
@@ -70,10 +74,10 @@ public final class SkillEffectHandler extends AbstractMaplePacketHandler {
             case Hero.MONSTER_MAGNET:
             case Evan.FIRE_BREATH:
             case Evan.ICE_BREATH:
-                c.getPlayer().getMap().broadcastMessage(c.getPlayer(), MaplePacketCreator.skillEffect(c.getPlayer(), skillId, level, flags, speed, aids), false);
+                c.getPlayer().getMap().broadcastMessage(c.getPlayer(), PacketCreator.skillEffect(c.getPlayer(), skillId, level, flags, speed, aids), false);
                 return;
             default:
-                System.out.println(c.getPlayer() + " entered SkillEffectHandler without being handled using " + skillId + ".");
+                log.warn("Chr {} entered SkillEffectHandler without being handled using {}", c.getPlayer(), skillId);
                 return;
         }
     }

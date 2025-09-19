@@ -21,55 +21,57 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.MapleDisease;
-import java.awt.Point;
-import java.util.List;
-import net.AbstractMaplePacketHandler;
-import net.server.world.MapleParty;
-import net.server.world.MaplePartyCharacter;
-import server.life.MapleLifeFactory;
-import server.life.MapleMonster;
-import server.partyquest.MapleCarnivalFactory;
-import server.partyquest.MapleCarnivalFactory.MCSkill;
+import client.Character;
+import client.Client;
+import client.Disease;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.world.Party;
+import net.server.world.PartyCharacter;
+import server.life.LifeFactory;
+import server.life.MobSkillType;
+import server.life.Monster;
+import server.partyquest.CarnivalFactory;
+import server.partyquest.CarnivalFactory.MCSkill;
 import server.partyquest.MonsterCarnival;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
+
+import java.awt.*;
+import java.util.List;
 
 
 /**
-    *@author Drago (Dragohe4rt)
-*/
+ * @author Drago (Dragohe4rt)
+ */
 
-public final class MonsterCarnivalHandler extends AbstractMaplePacketHandler {
+public final class MonsterCarnivalHandler extends AbstractPacketHandler {
 
     @Override
-    public void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
+    public void handlePacket(InPacket p, Client c) {
         if (c.tryacquireClient()) {
             try {
                 try {
-                    int tab = slea.readByte();
-                    int num = slea.readByte();
+                    int tab = p.readByte();
+                    int num = p.readByte();
                     int neededCP = 0;
-                    if (tab == 0) { 
+                    if (tab == 0) {
                         final List<Pair<Integer, Integer>> mobs = c.getPlayer().getMap().getMobsToSpawn();
                         if (num >= mobs.size() || c.getPlayer().getCP() < mobs.get(num).right) {
-                            c.announce(MaplePacketCreator.CPQMessage((byte) 1));
-                            c.announce(MaplePacketCreator.enableActions());
+                            c.sendPacket(PacketCreator.CPQMessage((byte) 1));
+                            c.sendPacket(PacketCreator.enableActions());
                             return;
                         }
 
-                        final MapleMonster mob = MapleLifeFactory.getMonster(mobs.get(num).left);
+                        final Monster mob = LifeFactory.getMonster(mobs.get(num).left);
                         MonsterCarnival mcpq = c.getPlayer().getMonsterCarnival();
                         if (mcpq != null) {
                             if (!mcpq.canSummonR() && c.getPlayer().getTeam() == 0 || !mcpq.canSummonB() && c.getPlayer().getTeam() == 1) {
-                                c.announce(MaplePacketCreator.CPQMessage((byte) 2));
-                                c.announce(MaplePacketCreator.enableActions());
+                                c.sendPacket(PacketCreator.CPQMessage((byte) 2));
+                                c.sendPacket(PacketCreator.enableActions());
                                 return;
                             }
-                            
+
                             if (c.getPlayer().getTeam() == 0) {
                                 mcpq.summonR();
                             } else {
@@ -81,7 +83,7 @@ public final class MonsterCarnivalHandler extends AbstractMaplePacketHandler {
 
                             c.getPlayer().getMap().addMonsterSpawn(mob, 1, c.getPlayer().getTeam());
                             c.getPlayer().getMap().addAllMonsterSpawn(mob, 1, c.getPlayer().getTeam());
-                            c.announce(MaplePacketCreator.enableActions());
+                            c.sendPacket(PacketCreator.enableActions());
                         }
 
                         neededCP = mobs.get(num).right;
@@ -89,25 +91,22 @@ public final class MonsterCarnivalHandler extends AbstractMaplePacketHandler {
                         final List<Integer> skillid = c.getPlayer().getMap().getSkillIds();
                         if (num >= skillid.size()) {
                             c.getPlayer().dropMessage(5, "An unexpected error has occurred.");
-                            c.announce(MaplePacketCreator.enableActions());
+                            c.sendPacket(PacketCreator.enableActions());
                             return;
                         }
-                        final MCSkill skill = MapleCarnivalFactory.getInstance().getSkill(skillid.get(num)); //ugh wtf
-                        if (skill == null || c.getPlayer().getCP() < skill.cpLoss) {
-                            c.announce(MaplePacketCreator.CPQMessage((byte) 1));
-                            c.announce(MaplePacketCreator.enableActions());
+                        final MCSkill skill = CarnivalFactory.getInstance().getSkill(skillid.get(num)); //ugh wtf
+                        if (skill == null || c.getPlayer().getCP() < skill.cpLoss()) {
+                            c.sendPacket(PacketCreator.CPQMessage((byte) 1));
+                            c.sendPacket(PacketCreator.enableActions());
                             return;
                         }
-                        final MapleDisease dis = skill.getDisease();
-                        MapleParty enemies = c.getPlayer().getParty().getEnemy();
-                        if (skill.targetsAll) {
-                            int hitChance = 0;
-                            if (dis.getDisease() == 121 || dis.getDisease() == 122 || dis.getDisease() == 125 || dis.getDisease() == 126) {
-                                hitChance = (int) (Math.random() * 100);
-                            }
+                        final Disease dis = skill.getDisease();
+                        Party enemies = c.getPlayer().getParty().getEnemy();
+                        if (skill.targetsAll()) {
+                            int hitChance = rollHitChance(dis.getMobSkillType());
                             if (hitChance <= 80) {
-                                for (MaplePartyCharacter mpc : enemies.getPartyMembers()) {
-                                    MapleCharacter mc = mpc.getPlayer();
+                                for (PartyCharacter mpc : enemies.getPartyMembers()) {
+                                    Character mc = mpc.getPlayer();
                                     if (mc != null) {
                                         if (dis == null) {
                                             mc.dispel();
@@ -120,7 +119,7 @@ public final class MonsterCarnivalHandler extends AbstractMaplePacketHandler {
                         } else {
                             int amount = enemies.getMembers().size() - 1;
                             int randd = (int) Math.floor(Math.random() * amount);
-                            MapleCharacter chrApp = c.getPlayer().getMap().getCharacterById(enemies.getMemberByPos(randd).getId());
+                            Character chrApp = c.getPlayer().getMap().getCharacterById(enemies.getMemberByPos(randd).getId());
                             if (chrApp != null && chrApp.getMap().isCPQMap()) {
                                 if (dis == null) {
                                     chrApp.dispel();
@@ -129,21 +128,21 @@ public final class MonsterCarnivalHandler extends AbstractMaplePacketHandler {
                                 }
                             }
                         }
-                        neededCP = skill.cpLoss;
-                        c.announce(MaplePacketCreator.enableActions());
+                        neededCP = skill.cpLoss();
+                        c.sendPacket(PacketCreator.enableActions());
                     } else if (tab == 2) { //protectors
-                        final MCSkill skill = MapleCarnivalFactory.getInstance().getGuardian(num);
-                        if (skill == null || c.getPlayer().getCP() < skill.cpLoss) {
-                            c.announce(MaplePacketCreator.CPQMessage((byte) 1));
-                            c.announce(MaplePacketCreator.enableActions());
+                        final MCSkill skill = CarnivalFactory.getInstance().getGuardian(num);
+                        if (skill == null || c.getPlayer().getCP() < skill.cpLoss()) {
+                            c.sendPacket(PacketCreator.CPQMessage((byte) 1));
+                            c.sendPacket(PacketCreator.enableActions());
                             return;
                         }
-                        
+
                         MonsterCarnival mcpq = c.getPlayer().getMonsterCarnival();
                         if (mcpq != null) {
                             if (!mcpq.canGuardianR() && c.getPlayer().getTeam() == 0 || !mcpq.canGuardianB() && c.getPlayer().getTeam() == 1) {
-                                c.announce(MaplePacketCreator.CPQMessage((byte) 2));
-                                c.announce(MaplePacketCreator.enableActions());
+                                c.sendPacket(PacketCreator.CPQMessage((byte) 2));
+                                c.sendPacket(PacketCreator.enableActions());
                                 return;
                             }
 
@@ -151,31 +150,38 @@ public final class MonsterCarnivalHandler extends AbstractMaplePacketHandler {
                             if (success != 1) {
                                 switch (success) {
                                     case -1:
-                                        c.announce(MaplePacketCreator.CPQMessage((byte) 3));
+                                        c.sendPacket(PacketCreator.CPQMessage((byte) 3));
                                         break;
 
                                     case 0:
-                                        c.announce(MaplePacketCreator.CPQMessage((byte) 4));
+                                        c.sendPacket(PacketCreator.CPQMessage((byte) 4));
                                         break;
 
                                     default:
-                                        c.announce(MaplePacketCreator.CPQMessage((byte) 3));
+                                        c.sendPacket(PacketCreator.CPQMessage((byte) 3));
                                 }
-                                c.announce(MaplePacketCreator.enableActions());
+                                c.sendPacket(PacketCreator.enableActions());
                                 return;
                             } else {
-                                neededCP = skill.cpLoss;
+                                neededCP = skill.cpLoss();
                             }
                         }
                     }
                     c.getPlayer().gainCP(-neededCP);
-                    c.getPlayer().getMap().broadcastMessage(MaplePacketCreator.playerSummoned(c.getPlayer().getName(), tab, num));
-                }catch (Exception e) {
+                    c.getPlayer().getMap().broadcastMessage(PacketCreator.playerSummoned(c.getPlayer().getName(), tab, num));
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             } finally {
                 c.releaseClient();
             }
         }
+    }
+
+    private int rollHitChance(MobSkillType type) {
+        return switch (type) {
+            case DARKNESS, WEAKNESS, POISON, SLOW -> (int) (Math.random() * 100);
+            default -> 0;
+        };
     }
 }

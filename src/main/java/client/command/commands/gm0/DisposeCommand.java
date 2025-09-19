@@ -23,22 +23,22 @@
 */
 package client.command.commands.gm0;
 
-import client.MapleClient;
+import client.Client;
 import client.command.Command;
 import scripting.npc.NPCScriptManager;
 import scripting.quest.QuestScriptManager;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 public class DisposeCommand extends Command {
     {
         setDescription("Dispose to fix NPC chat.");
     }
-    
+
     @Override
-    public void execute(MapleClient c, String[] params) {
+    public void execute(Client c, String[] params) {
         NPCScriptManager.getInstance().dispose(c);
         QuestScriptManager.getInstance().dispose(c);
-        c.announce(MaplePacketCreator.enableActions());
+        c.sendPacket(PacketCreator.enableActions());
         c.removeClickedNPC();
         c.getPlayer().message("You've been disposed.");
     }

@@ -23,11 +23,16 @@
 */
 package client.command.commands.gm1;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import constants.game.GameConstants;
-import server.maps.*;
+import constants.id.NpcId;
+import server.maps.FieldLimit;
+import server.maps.MapFactory;
+import server.maps.MapleMap;
+import server.maps.MiniDungeonInfo;
+import server.maps.Portal;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,79 +41,79 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 public class GotoCommand extends Command {
-    
+
     {
         setDescription("Warp to a predefined map.");
-        
+
         List<Entry<String, Integer>> towns = new ArrayList<>(GameConstants.GOTO_TOWNS.entrySet());
         sortGotoEntries(towns);
-        
+
         try {
             // thanks shavit for noticing goto areas getting loaded from wz needlessly only for the name retrieval
-            
+
             for (Map.Entry<String, Integer> e : towns) {
-                GOTO_TOWNS_INFO += ("'" + e.getKey() + "' - #b" + (MapleMapFactory.loadPlaceName(e.getValue())) + "#k\r\n");
+                GOTO_TOWNS_INFO += ("'" + e.getKey() + "' - #b" + (MapFactory.loadPlaceName(e.getValue())) + "#k\r\n");
             }
 
             List<Entry<String, Integer>> areas = new ArrayList<>(GameConstants.GOTO_AREAS.entrySet());
             sortGotoEntries(areas);
             for (Map.Entry<String, Integer> e : areas) {
-                GOTO_AREAS_INFO += ("'" + e.getKey() + "' - #b" + (MapleMapFactory.loadPlaceName(e.getValue())) + "#k\r\n");
+                GOTO_AREAS_INFO += ("'" + e.getKey() + "' - #b" + (MapFactory.loadPlaceName(e.getValue())) + "#k\r\n");
             }
         } catch (Exception e) {
             e.printStackTrace();
-            
+
             GOTO_TOWNS_INFO = "(none)";
             GOTO_AREAS_INFO = "(none)";
         }
-        
+
     }
-    
+
     public static String GOTO_TOWNS_INFO = "";
     public static String GOTO_AREAS_INFO = "";
-    
+
     private static void sortGotoEntries(List<Entry<String, Integer>> listEntries) {
         listEntries.sort((e1, e2) -> e1.getValue().compareTo(e2.getValue()));
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        if (params.length < 1){
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        if (params.length < 1) {
             String sendStr = "Syntax: #b@goto <map name>#k. Available areas:\r\n\r\n#rTowns:#k\r\n" + GOTO_TOWNS_INFO;
             if (player.isGM()) {
                 sendStr += ("\r\n#rAreas:#k\r\n" + GOTO_AREAS_INFO);
             }
-            
-            player.getAbstractPlayerInteraction().npcTalk(9000020, sendStr);
+
+            player.getAbstractPlayerInteraction().npcTalk(NpcId.SPINEL, sendStr);
             return;
         }
-        
+
         if (!player.isAlive()) {
             player.dropMessage(1, "This command cannot be used when you're dead.");
             return;
         }
 
         if (!player.isGM()) {
-            if (player.getEventInstance() != null || MapleMiniDungeonInfo.isDungeonMap(player.getMapId()) || FieldLimit.CANNOTMIGRATE.check(player.getMap().getFieldLimit())) {
+            if (player.getEventInstance() != null || MiniDungeonInfo.isDungeonMap(player.getMapId()) || FieldLimit.CANNOTMIGRATE.check(player.getMap().getFieldLimit())) {
                 player.dropMessage(1, "This command can not be used in this map.");
                 return;
             }
         }
 
-        HashMap<String, Integer> gotomaps;
+        Map<String, Integer> gotomaps;
         if (player.isGM()) {
             gotomaps = new HashMap<>(GameConstants.GOTO_AREAS);     // distinct map registry for GM/users suggested thanks to Vcoc
             gotomaps.putAll(GameConstants.GOTO_TOWNS);  // thanks Halcyon (UltimateMors) for pointing out duplicates on listed entries functionality
         } else {
             gotomaps = GameConstants.GOTO_TOWNS;
         }
-        
+
         if (gotomaps.containsKey(params[0])) {
             MapleMap target = c.getChannelServer().getMapFactory().getMap(gotomaps.get(params[0]));
-            
+
             // expedition issue with this command detected thanks to Masterrulax
-            MaplePortal targetPortal = target.getRandomPlayerSpawnpoint();
+            Portal targetPortal = target.getRandomPlayerSpawnpoint();
             player.saveLocationOnWarp();
             player.changeMap(target, targetPortal);
         } else {
@@ -117,8 +122,8 @@ public class GotoCommand extends Command {
             if (player.isGM()) {
                 sendStr += ("\r\n#rAreas:#k\r\n" + GOTO_AREAS_INFO);
             }
-            
-            player.getAbstractPlayerInteraction().npcTalk(9000020, sendStr);
+
+            player.getAbstractPlayerInteraction().npcTalk(NpcId.SPINEL, sendStr);
         }
     }
 }

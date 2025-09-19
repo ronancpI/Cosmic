@@ -21,93 +21,78 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.MapleDisease;
+import client.Character;
+import client.Client;
+import client.Disease;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventoryType;
-import config.YamlConfig;
+import client.inventory.manipulator.InventoryManipulator;
+import constants.id.ItemId;
 import constants.inventory.ItemConstants;
-import net.AbstractMaplePacketHandler;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import server.MapleItemInformationProvider;
-import server.MapleStatEffect;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.ItemInformationProvider;
+import server.StatEffect;
+import tools.PacketCreator;
 
 /**
  * @author Matze
  */
-public final class UseItemHandler extends AbstractMaplePacketHandler {
+public final class UseItemHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
-        
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
+
         if (!chr.isAlive()) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
-        MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-        slea.readInt();
-        short slot = slea.readShort();
-        int itemId = slea.readInt();
-        Item toUse = chr.getInventory(MapleInventoryType.USE).getItem(slot);
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        p.readInt();
+        short slot = p.readShort();
+        int itemId = p.readInt();
+        Item toUse = chr.getInventory(InventoryType.USE).getItem(slot);
         if (toUse != null && toUse.getQuantity() > 0 && toUse.getItemId() == itemId) {
-            if (itemId == 2050004) {
+            if (itemId == ItemId.ALL_CURE_POTION) {
                 chr.dispelDebuffs();
                 remove(c, slot);
                 return;
-            } else if (itemId == 2050001) {
-		chr.dispelDebuff(MapleDisease.DARKNESS);
+            } else if (itemId == ItemId.EYEDROP) {
+                chr.dispelDebuff(Disease.DARKNESS);
                 remove(c, slot);
                 return;
-	    } else if (itemId == 2050002) {
-		chr.dispelDebuff(MapleDisease.WEAKEN);
-                chr.dispelDebuff(MapleDisease.SLOW);
+            } else if (itemId == ItemId.TONIC) {
+                chr.dispelDebuff(Disease.WEAKEN);
+                chr.dispelDebuff(Disease.SLOW);
                 remove(c, slot);
                 return;
-            } else if (itemId == 2050003) {
-                chr.dispelDebuff(MapleDisease.SEAL);
-		chr.dispelDebuff(MapleDisease.CURSE);
+            } else if (itemId == ItemId.HOLY_WATER) {
+                chr.dispelDebuff(Disease.SEAL);
+                chr.dispelDebuff(Disease.CURSE);
                 remove(c, slot);
                 return;
             } else if (ItemConstants.isTownScroll(itemId)) {
-                int banMap = chr.getMapId();
-                int banSp = chr.getMap().findClosestPlayerSpawnpoint(chr.getPosition()).getId();
-                long banTime = currentServerTime();
-                
-                if (ii.getItemEffect(toUse.getItemId()).applyTo(chr)) {
-                    if(YamlConfig.config.server.USE_BANISHABLE_TOWN_SCROLL) {
-                        chr.setBanishPlayerData(banMap, banSp, banTime);
-                    }
-                    
-                    remove(c, slot);
-                }
-                return;
-            } else if (ItemConstants.isAntibanishScroll(itemId)) {
                 if (ii.getItemEffect(toUse.getItemId()).applyTo(chr)) {
                     remove(c, slot);
-                } else {
-                    chr.dropMessage(5, "You cannot recover from a banish state at the moment.");
                 }
                 return;
             }
-            
+
             remove(c, slot);
-            
-            if(toUse.getItemId() != 2022153) {
+
+            if (toUse.getItemId() != ItemId.HAPPY_BIRTHDAY) {
                 ii.getItemEffect(toUse.getItemId()).applyTo(chr);
             } else {
-                MapleStatEffect mse = ii.getItemEffect(toUse.getItemId());
-                for(MapleCharacter player : chr.getMap().getCharacters()) {
+                StatEffect mse = ii.getItemEffect(toUse.getItemId());
+                for (Character player : chr.getMap().getCharacters()) {
                     mse.applyTo(player);
                 }
             }
         }
     }
 
-    private void remove(MapleClient c, short slot) {
-        MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.USE, slot, (short) 1, false);
-        c.announce(MaplePacketCreator.enableActions());
+    private void remove(Client c, short slot) {
+        InventoryManipulator.removeFromSlot(c, InventoryType.USE, slot, (short) 1, false);
+        c.sendPacket(PacketCreator.enableActions());
     }
 }

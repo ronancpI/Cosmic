@@ -21,52 +21,53 @@
  */
 package net.server.channel.handlers;
 
-import net.AbstractMaplePacketHandler;
-import net.server.world.MapleParty;
-import tools.data.input.SeekableLittleEndianAccessor;
-import tools.MaplePacketCreator;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.world.Party;
 import net.server.world.World;
+import tools.PacketCreator;
 
 /**
- *
  * @author XoticStory
  * @author BubblesDev
  * @author Ronan
  */
-public class PartySearchStartHandler extends AbstractMaplePacketHandler {
-        @Override
-	public void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-            int min = slea.readInt();
-            int max = slea.readInt();
+public class PartySearchStartHandler extends AbstractPacketHandler {
+    @Override
+    public void handlePacket(InPacket p, Client c) {
+        int min = p.readInt();
+        int max = p.readInt();
 
-            MapleCharacter chr = c.getPlayer();
-            if (min > max) {
-                chr.dropMessage(1, "The min. value is higher than the max!");
-                c.announce(MaplePacketCreator.enableActions());
-                return;
-            }
+        Character chr = c.getPlayer();
+        if (min > max) {
+            chr.dropMessage(1, "The min. value is higher than the max!");
+            c.sendPacket(PacketCreator.enableActions());
+            return;
+        }
 
-            if (max - min > 30) {
-                chr.dropMessage(1, "You can only search for party members within a range of 30 levels.");
-                c.announce(MaplePacketCreator.enableActions());
-                return;
-            }
+        if (max - min > 30) {
+            chr.dropMessage(1, "You can only search for party members within a range of 30 levels.");
+            c.sendPacket(PacketCreator.enableActions());
+            return;
+        }
 
-            if (chr.getLevel() < min || chr.getLevel() > max) {
-                chr.dropMessage(1, "The range of level for search has to include your own level.");
-                c.announce(MaplePacketCreator.enableActions());
-                return;
-            }
+        if (chr.getLevel() < min || chr.getLevel() > max) {
+            chr.dropMessage(1, "The range of level for search has to include your own level.");
+            c.sendPacket(PacketCreator.enableActions());
+            return;
+        }
 
-            slea.readInt(); // members
-            int jobs = slea.readInt();
+        p.readInt(); // members
+        int jobs = p.readInt();
 
-            MapleParty party = c.getPlayer().getParty();
-            if (party == null || !c.getPlayer().isPartyLeader()) return;
+        Party party = c.getPlayer().getParty();
+        if (party == null || !c.getPlayer().isPartyLeader()) {
+            return;
+        }
 
-            World world = c.getWorldServer();
-            world.getPartySearchCoordinator().registerPartyLeader(chr, min, max, jobs);
-	}
+        World world = c.getWorldServer();
+        world.getPartySearchCoordinator().registerPartyLeader(chr, min, max, jobs);
+    }
 }

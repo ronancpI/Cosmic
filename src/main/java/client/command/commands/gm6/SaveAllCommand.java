@@ -23,12 +23,12 @@
 */
 package client.command.commands.gm6;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import net.server.Server;
 import net.server.world.World;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 public class SaveAllCommand extends Command {
     {
@@ -36,15 +36,15 @@ public class SaveAllCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         for (World world : Server.getInstance().getWorlds()) {
-            for (MapleCharacter chr : world.getPlayerStorage().getAllCharacters()) {
+            for (Character chr : world.getPlayerStorage().getAllCharacters()) {
                 chr.saveCharToDB();
             }
         }
         String message = player.getName() + " used !saveall.";
-        Server.getInstance().broadcastGMMessage(c.getWorld(), MaplePacketCreator.serverNotice(5, message));
+        Server.getInstance().broadcastGMMessage(c.getWorld(), PacketCreator.serverNotice(5, message));
         player.message("All players saved successfully.");
     }
 }

@@ -21,28 +21,28 @@
 */
 package client;
 
-import net.server.audit.locks.MonitoredLockType;
-import net.server.audit.locks.factory.MonitoredReentrantLockFactory;
 import tools.DatabaseConnection;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.Semaphore;
+import java.util.Set;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class MonsterBook {
-    private static final Semaphore semaphore = new Semaphore(10);
-    
     private int specialCard = 0;
     private int normalCard = 0;
     private int bookLevel = 1;
-    private Map<Integer, Integer> cards = new LinkedHashMap<>();
-    private Lock lock = MonitoredReentrantLockFactory.createLock(MonitoredLockType.BOOK);
+    private final Map<Integer, Integer> cards = new LinkedHashMap<>();
+    private final Lock lock = new ReentrantLock();
 
     public Set<Entry<Integer, Integer>> getCardSet() {
         lock.lock();
@@ -52,23 +52,23 @@ public final class MonsterBook {
             lock.unlock();
         }
     }
-    
-    public void addCard(final MapleClient c, final int cardid) {
-        c.getPlayer().getMap().broadcastMessage(c.getPlayer(), MaplePacketCreator.showForeignCardEffect(c.getPlayer().getId()), false);
-        
+
+    public void addCard(final Client c, final int cardid) {
+        c.getPlayer().getMap().broadcastMessage(c.getPlayer(), PacketCreator.showForeignCardEffect(c.getPlayer().getId()), false);
+
         Integer qty;
         lock.lock();
         try {
             qty = cards.get(cardid);
-            
-            if(qty != null) {
-                if(qty < 5) {
+
+            if (qty != null) {
+                if (qty < 5) {
                     cards.put(cardid, qty + 1);
                 }
             } else {
                 cards.put(cardid, 1);
                 qty = 0;
-                
+
                 if (cardid / 1000 >= 2388) {
                     specialCard++;
                 } else {
@@ -78,16 +78,16 @@ public final class MonsterBook {
         } finally {
             lock.unlock();
         }
-        
-        if(qty < 5) {
+
+        if (qty < 5) {
             if (qty == 0) {     // leveling system only accounts unique cards
                 calculateLevel();
             }
-            
-            c.announce(MaplePacketCreator.addCard(false, cardid, qty + 1));
-            c.announce(MaplePacketCreator.showGainCard());
+
+            c.sendPacket(PacketCreator.addCard(false, cardid, qty + 1));
+            c.sendPacket(PacketCreator.showGainCard());
         } else {
-            c.announce(MaplePacketCreator.addCard(true, cardid, 5));
+            c.sendPacket(PacketCreator.addCard(true, cardid, 5));
         }
     }
 
@@ -95,13 +95,13 @@ public final class MonsterBook {
         lock.lock();
         try {
             int collectionExp = (normalCard + specialCard);
-            
+
             int level = 0, expToNextlevel = 1;
             do {
                 level++;
                 expToNextlevel += level * 10;
             } while (collectionExp >= expToNextlevel);
-            
+
             bookLevel = level;  // thanks IxianMace for noticing book level differing between book UI and character info UI
         } finally {
             lock.unlock();
@@ -180,64 +180,30 @@ public final class MonsterBook {
         calculateLevel();
     }
 
-    private static int saveStringConcat(char[] data, int pos, Integer i) {
-        return saveStringConcat(data, pos, i.toString());
-    }
-    
-    private static int saveStringConcat(char[] data, int pos, String s) {
-        int len = s.length();
-        for(int j = 0; j < len; j++) {
-            data[pos + j] = s.charAt(j);
-        }
-        
-        return pos + len;
-    }
-    
-    private static String getSaveString(Integer charid, Set<Entry<Integer, Integer>> cardSet) {
-        semaphore.acquireUninterruptibly();
-        try {
-            char[] save = new char[400000]; // 500 * 10 * 10 * 8
-            int i = 0;
+    public void saveCards(Connection con, int chrId) throws SQLException {
+        final String query = """
+                INSERT INTO monsterbook (charid, cardid, level)
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE level = ?;
+                """;
+        try (final PreparedStatement ps = con.prepareStatement(query)) {
+            for (Map.Entry<Integer, Integer> cardAndLevel : cards.entrySet()) {
+                final int card = cardAndLevel.getKey();
+                final int level = cardAndLevel.getValue();
+                // insert
+                ps.setInt(1, chrId);
+                ps.setInt(2, card);
+                ps.setInt(3, level);
 
-            i = saveStringConcat(save, i, "INSERT INTO monsterbook VALUES ");
+                // update
+                ps.setInt(4, level);
 
-            for (Entry<Integer, Integer> all : cardSet) {   // assuming maxsize 500 unique cards
-                i = saveStringConcat(save, i, "(");
-                i = saveStringConcat(save, i, charid);  //10 chars
-                i = saveStringConcat(save, i, ", ");
-                i = saveStringConcat(save, i, all.getKey());  //10 chars
-                i = saveStringConcat(save, i, ", ");
-                i = saveStringConcat(save, i, all.getValue());  //1 char due to being 0 ~ 5
-                i = saveStringConcat(save, i, "),");
+                ps.addBatch();
             }
-            
-            return new String(save, 0, i - 1);
-        } finally {
-            semaphore.release();
+            ps.executeBatch();
         }
     }
-    
-    public void saveCards(final int charid) {
-        Set<Entry<Integer, Integer>> cardSet = getCardSet();
 
-        if (cardSet.isEmpty()) {
-            return;
-        }
-
-        try (Connection con = DatabaseConnection.getConnection()) {
-            try (PreparedStatement ps = con.prepareStatement("DELETE FROM monsterbook WHERE charid = ?")) {
-                ps.setInt(1, charid);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = con.prepareStatement(getSaveString(charid, cardSet))) {
-                ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-    
     public static int[] getCardTierSize() {
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement("SELECT COUNT(*) FROM monstercarddata GROUP BY floor(cardid / 1000);", ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);

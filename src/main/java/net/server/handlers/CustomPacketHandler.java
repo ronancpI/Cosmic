@@ -21,21 +21,21 @@
 */
 package net.server.handlers;
 
-import client.MapleClient;
-import net.MaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.PacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
-public class CustomPacketHandler implements MaplePacketHandler {
+public class CustomPacketHandler implements PacketHandler {
     @Override
-    public void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        if (slea.available() > 0 && c.getGMLevel() == 4) {//w/e       
-            c.announce(MaplePacketCreator.customPacket(slea.read((int) slea.available())));
+    public void handlePacket(InPacket p, Client c) {
+        if (p.available() > 0 && c.getGMLevel() == 4) {//w/e
+            c.sendPacket(PacketCreator.customPacket(p.readBytes(p.available())));
         }
     }
 
     @Override
-    public boolean validateState(MapleClient c) {
+    public boolean validateState(Client c) {
         return true;
     }
 }

@@ -21,61 +21,61 @@
 */
 package net.server.channel.handlers;
 
-import java.util.Set;
+import client.Character;
+import client.Client;
+import client.inventory.Pet;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.maps.MapItem;
+import server.maps.MapObject;
+import tools.PacketCreator;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.inventory.MaplePet;
-import net.AbstractMaplePacketHandler;
-import server.maps.MapleMapItem;
-import server.maps.MapleMapObject;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import java.util.Set;
 
 /**
  * @author TheRamon
  * @author Ronan
  */
-public final class PetLootHandler extends AbstractMaplePacketHandler {
+public final class PetLootHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
-        
-        int petIndex = chr.getPetIndex(slea.readInt());
-        MaplePet pet = chr.getPet(petIndex);
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
+
+        int petIndex = chr.getPetIndex(p.readInt());
+        Pet pet = chr.getPet(petIndex);
         if (pet == null || !pet.isSummoned()) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
             return;
         }
-        
-        slea.skip(13);
-        int oid = slea.readInt();
-        MapleMapObject ob = chr.getMap().getMapObject(oid);        
+
+        p.skip(13);
+        int oid = p.readInt();
+        MapObject ob = chr.getMap().getMapObject(oid);
         try {
-            MapleMapItem mapitem = (MapleMapItem) ob;
+            MapItem mapitem = (MapItem) ob;
             if (mapitem.getMeso() > 0) {
                 if (!chr.isEquippedMesoMagnet()) {
-                    c.announce(MaplePacketCreator.enableActions());
+                    c.sendPacket(PacketCreator.enableActions());
                     return;
                 }
 
                 if (chr.isEquippedPetItemIgnore()) {
                     final Set<Integer> petIgnore = chr.getExcludedItems();
-                    if(!petIgnore.isEmpty() && petIgnore.contains(Integer.MAX_VALUE)) {
-                        c.announce(MaplePacketCreator.enableActions());
+                    if (!petIgnore.isEmpty() && petIgnore.contains(Integer.MAX_VALUE)) {
+                        c.sendPacket(PacketCreator.enableActions());
                         return;
                     }
                 }
             } else {
                 if (!chr.isEquippedItemPouch()) {
-                    c.announce(MaplePacketCreator.enableActions());
+                    c.sendPacket(PacketCreator.enableActions());
                     return;
                 }
 
                 if (chr.isEquippedPetItemIgnore()) {
                     final Set<Integer> petIgnore = chr.getExcludedItems();
-                    if(!petIgnore.isEmpty() && petIgnore.contains(mapitem.getItem().getItemId())) {
-                        c.announce(MaplePacketCreator.enableActions());
+                    if (!petIgnore.isEmpty() && petIgnore.contains(mapitem.getItem().getItemId())) {
+                        c.sendPacket(PacketCreator.enableActions());
                         return;
                     }
                 }
@@ -83,7 +83,7 @@ public final class PetLootHandler extends AbstractMaplePacketHandler {
 
             chr.pickupItem(ob, petIndex);
         } catch (NullPointerException | ClassCastException e) {
-            c.announce(MaplePacketCreator.enableActions());
+            c.sendPacket(PacketCreator.enableActions());
         }
     }
 }

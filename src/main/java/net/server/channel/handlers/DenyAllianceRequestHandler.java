@@ -19,28 +19,28 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import client.MapleCharacter;
-import net.AbstractMaplePacketHandler;
-import net.server.guild.MapleAlliance;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.guild.Alliance;
 
 /**
  * @author Ronan
  */
-public final class DenyAllianceRequestHandler extends AbstractMaplePacketHandler {
+public final class DenyAllianceRequestHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        slea.readByte();
-        String inviterName = slea.readMapleAsciiString();
-        String guildName = slea.readMapleAsciiString();
-        
-        MapleCharacter chr = c.getWorldServer().getPlayerStorage().getCharacterByName(inviterName);
+    public final void handlePacket(InPacket p, Client c) {
+        p.readByte();
+        String inviterName = p.readString();
+        String guildName = p.readString();
+
+        Character chr = c.getWorldServer().getPlayerStorage().getCharacterByName(inviterName);
         if (chr != null) {
-            MapleAlliance alliance = chr.getAlliance();
+            Alliance alliance = chr.getAlliance();
             if (alliance != null) {
-                MapleAlliance.answerInvitation(c.getPlayer().getId(), guildName, alliance.getId(), false);
+                Alliance.answerInvitation(c.getPlayer().getId(), guildName, alliance.getId(), false);
             }
         }
     }

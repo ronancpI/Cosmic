@@ -21,28 +21,29 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import scripting.reactor.ReactorScriptManager;
-import server.maps.MapleReactor;
-import tools.data.input.SeekableLittleEndianAccessor;
+import server.maps.Reactor;
 
 /**
- *
  * @author Generic
  */
-public final class TouchReactorHandler extends AbstractMaplePacketHandler {
-    
+public final class TouchReactorHandler extends AbstractPacketHandler {
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int oid = slea.readInt();
-        MapleReactor reactor = c.getPlayer().getMap().getReactorByOid(oid);
-        if (reactor != null) {
-            if (slea.readByte() != 0) {
-                ReactorScriptManager.getInstance().touch(c, reactor);
-            } else {
-                ReactorScriptManager.getInstance().untouch(c, reactor);
-            }
+    public final void handlePacket(InPacket p, Client c) {
+        int oid = p.readInt();
+        Reactor reactor = c.getPlayer().getMap().getReactorByOid(oid);
+        if (reactor == null) {
+            return;
+        }
+
+        if (p.readByte() != 0) {
+            ReactorScriptManager.getInstance().touch(c, reactor);
+        } else {
+            ReactorScriptManager.getInstance().untouch(c, reactor);
         }
     }
 }

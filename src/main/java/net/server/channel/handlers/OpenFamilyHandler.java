@@ -19,23 +19,24 @@
 */
 package net.server.channel.handlers;
 
+import client.Character;
+import client.Client;
 import config.YamlConfig;
-import client.MapleCharacter;
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import tools.PacketCreator;
 
 /**
- *
  * @author Ubaware
  */
-public final class OpenFamilyHandler extends AbstractMaplePacketHandler {
+public final class OpenFamilyHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        if(!YamlConfig.config.server.USE_FAMILY_SYSTEM) return;
-        MapleCharacter chr = c.getPlayer();
-        c.announce(MaplePacketCreator.getFamilyInfo(chr.getFamilyEntry()));
+    public final void handlePacket(InPacket p, Client c) {
+        if (!YamlConfig.config.server.USE_FAMILY_SYSTEM) {
+            return;
+        }
+        Character chr = c.getPlayer();
+        c.sendPacket(PacketCreator.getFamilyInfo(chr.getFamilyEntry()));
     }
 }
 

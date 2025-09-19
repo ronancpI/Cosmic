@@ -23,21 +23,21 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import tools.MapleLogger;
+import net.packet.logging.MonitoredChrLogger;
 
 public class MonitorsCommand extends Command {
     {
-        setDescription("Show all players having their packets logged.");
+        setDescription("Show all characters being monitored for packet logging");
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        for (Integer cid : MapleLogger.monitored) {
-            player.yellowMessage(MapleCharacter.getNameById(cid) + " is being monitored.");
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        for (int chrId : MonitoredChrLogger.getMonitoredChrIds()) {
+            player.yellowMessage(Character.getNameById(chrId) + " is being monitored.");
         }
     }
 }

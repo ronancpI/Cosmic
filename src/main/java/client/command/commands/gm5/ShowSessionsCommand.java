@@ -19,12 +19,11 @@
 */
 package client.command.commands.gm5;
 
-import client.MapleClient;
+import client.Client;
 import client.command.Command;
-import net.server.coordinator.session.MapleSessionCoordinator;
+import net.server.coordinator.session.SessionCoordinator;
 
 /**
- *
  * @author Ronan
  */
 public class ShowSessionsCommand extends Command {
@@ -33,7 +32,7 @@ public class ShowSessionsCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleSessionCoordinator.getInstance().printSessionTrace(c);
+    public void execute(Client c, String[] params) {
+        SessionCoordinator.getInstance().printSessionTrace(c);
     }
 }

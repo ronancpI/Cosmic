@@ -23,38 +23,43 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.inventory.Item;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import net.AbstractMaplePacketHandler;
+import client.inventory.manipulator.InventoryManipulator;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import server.CashShop;
-import server.MapleItemInformationProvider;
+import server.ItemInformationProvider;
 import tools.DatabaseConnection;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 
 /**
- *
  * @author Penguins (Acrylic)
  * @author Ronan (HeavenMS)
  */
-public final class CouponCodeHandler extends AbstractMaplePacketHandler {
-    
-    private static List<Pair<Integer, Pair<Integer, Integer>>> getNXCodeItems(MapleCharacter chr, Connection con, int codeid) throws SQLException {
+public final class CouponCodeHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(CouponCodeHandler.class);
+
+    private static List<Pair<Integer, Pair<Integer, Integer>>> getNXCodeItems(Character chr, Connection con, int codeid) throws SQLException {
         Map<Integer, Integer> couponItems = new HashMap<>();
         Map<Integer, Integer> couponPoints = new HashMap<>(5);
-        
+
         try (PreparedStatement ps = con.prepareStatement("SELECT * FROM nxcode_items WHERE codeid = ?")) {
             ps.setInt(1, codeid);
 
@@ -81,38 +86,38 @@ public final class CouponCodeHandler extends AbstractMaplePacketHandler {
                 }
             }
         }
-        
+
         List<Pair<Integer, Pair<Integer, Integer>>> ret = new LinkedList<>();
         if (!couponItems.isEmpty()) {
             for (Entry<Integer, Integer> e : couponItems.entrySet()) {
                 int item = e.getKey(), qty = e.getValue();
-                
-                if (MapleItemInformationProvider.getInstance().getName(item) == null) {
+
+                if (ItemInformationProvider.getInstance().getName(item) == null) {
                     item = 4000000;
                     qty = 1;
-                    
-                    FilePrinter.printError(FilePrinter.UNHANDLED_EVENT, "Error trying to redeem itemid " + item + " from codeid " + codeid + ".");
+
+                    log.warn("Error trying to redeem itemid {} from coupon codeid {}", item, codeid);
                 }
-                
+
                 if (!chr.canHold(item, qty)) {
                     return null;
                 }
-                
+
                 ret.add(new Pair<>(5, new Pair<>(item, qty)));
             }
         }
-        
+
         if (!couponPoints.isEmpty()) {
             for (Entry<Integer, Integer> e : couponPoints.entrySet()) {
                 ret.add(new Pair<>(e.getKey(), new Pair<>(777, e.getValue())));
             }
         }
-        
+
         return ret;
     }
-    
-    private static Pair<Integer, List<Pair<Integer, Pair<Integer, Integer>>>> getNXCodeResult(MapleCharacter chr, String code) {
-        MapleClient c = chr.getClient();
+
+    private static Pair<Integer, List<Pair<Integer, Pair<Integer, Integer>>>> getNXCodeResult(Character chr, String code) {
+        Client c = chr.getClient();
         List<Pair<Integer, Pair<Integer, Integer>>> ret = new LinkedList<>();
         try {
             if (!c.attemptCsCoupon()) {
@@ -158,37 +163,37 @@ public final class CouponCodeHandler extends AbstractMaplePacketHandler {
         c.resetCsCoupon();
         return new Pair<>(0, ret);
     }
-    
+
     private static int parseCouponResult(int res) {
         switch (res) {
             case -1:
                 return 0xB0;
-                
+
             case -2:
                 return 0xB3;
-            
+
             case -3:
                 return 0xB2;
-            
+
             case -4:
                 return 0xBB;
-                
+
             default:
                 return 0xB1;
         }
     }
-    
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        slea.skip(2);
-        String code = slea.readMapleAsciiString();
-        
+    public final void handlePacket(InPacket p, Client c) {
+        p.skip(2);
+        String code = p.readString();
+
         if (c.tryacquireClient()) {
             try {
                 Pair<Integer, List<Pair<Integer, Pair<Integer, Integer>>>> codeRes = getNXCodeResult(c.getPlayer(), code.toUpperCase());
                 int type = codeRes.getLeft();
                 if (type < 0) {
-                    c.announce(MaplePacketCreator.showCashShopMessage((byte) parseCouponResult(type)));
+                    c.sendPacket(PacketCreator.showCashShopMessage((byte) parseCouponResult(type)));
                 } else {
                     List<Item> cashItems = new LinkedList<>();
                     List<Pair<Integer, Integer>> items = new LinkedList<>();
@@ -196,10 +201,10 @@ public final class CouponCodeHandler extends AbstractMaplePacketHandler {
                     int maplePoints = 0;
                     int nxPrepaid = 0;
                     int mesos = 0;
-                    
-                    for (Pair<Integer, Pair<Integer, Integer>> p : codeRes.getRight()) {
-                        type = p.getLeft();
-                        int quantity = p.getRight().getRight();
+
+                    for (Pair<Integer, Pair<Integer, Integer>> pair : codeRes.getRight()) {
+                        type = pair.getLeft();
+                        int quantity = pair.getRight().getRight();
 
                         CashShop cs = c.getPlayer().getCashShop();
                         switch (type) {
@@ -227,8 +232,8 @@ public final class CouponCodeHandler extends AbstractMaplePacketHandler {
                                 break;
 
                             default:
-                                int item = p.getRight().getLeft();
-                                
+                                int item = pair.getRight().getLeft();
+
                                 short qty;
                                 if (quantity > Short.MAX_VALUE) {
                                     qty = Short.MAX_VALUE;
@@ -237,32 +242,32 @@ public final class CouponCodeHandler extends AbstractMaplePacketHandler {
                                 } else {
                                     qty = (short) quantity;
                                 }
-                                
-                                if (MapleItemInformationProvider.getInstance().isCash(item)) {
+
+                                if (ItemInformationProvider.getInstance().isCash(item)) {
                                     Item it = CashShop.generateCouponItem(item, qty);
 
                                     cs.addToInventory(it);
                                     cashItems.add(it);
                                 } else {
-                                    MapleInventoryManipulator.addById(c, item, qty, "", -1);
+                                    InventoryManipulator.addById(c, item, qty, "", -1);
                                     items.add(new Pair<>((int) qty, item));
                                 }
                                 break;
                         }
                     }
-                    if(cashItems.size() > 255) {
+                    if (cashItems.size() > 255) {
                         List<Item> oldList = cashItems;
                         cashItems = Arrays.asList(new Item[255]);
                         int index = 0;
-                        for(Item item : oldList) {
+                        for (Item item : oldList) {
                             cashItems.set(index, item);
                             index++;
                         }
                     }
                     if (nxCredit != 0 || nxPrepaid != 0) { //coupon packet can only show maple points (afaik)
-                        c.announce(MaplePacketCreator.showBoughtQuestItem(0));
+                        c.sendPacket(PacketCreator.showBoughtQuestItem(0));
                     } else {
-                        c.announce(MaplePacketCreator.showCouponRedeemedItems(c.getAccID(), maplePoints, mesos, cashItems, items));
+                        c.sendPacket(PacketCreator.showCouponRedeemedItems(c.getAccID(), maplePoints, mesos, cashItems, items));
                     }
                     c.enableCSActions();
                 }

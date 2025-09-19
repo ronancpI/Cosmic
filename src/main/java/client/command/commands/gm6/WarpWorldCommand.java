@@ -23,11 +23,11 @@
 */
 package client.command.commands.gm6;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import net.server.Server;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -38,8 +38,8 @@ public class WarpWorldCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !warpworld <worldid>");
             return;
@@ -49,13 +49,13 @@ public class WarpWorldCommand extends Command {
         byte worldb = Byte.parseByte(params[0]);
         if (worldb <= (server.getWorldsSize() - 1)) {
             try {
-                String[] socket = server.getInetSocket(worldb, c.getChannel());
+                String[] socket = server.getInetSocket(c, worldb, c.getChannel());
                 c.getWorldServer().removePlayer(player);
                 player.getMap().removePlayer(player);//LOL FORGOT THIS ><
                 player.setSessionTransitionState();
                 player.setWorld(worldb);
                 player.saveCharToDB();//To set the new world :O (true because else 2 player instances are created, one in both worlds)
-                c.announce(MaplePacketCreator.getChannelChange(InetAddress.getByName(socket[0]), Integer.parseInt(socket[1])));
+                c.sendPacket(PacketCreator.getChannelChange(InetAddress.getByName(socket[0]), Integer.parseInt(socket[1])));
             } catch (UnknownHostException | NumberFormatException ex) {
                 ex.printStackTrace();
                 player.message("Unexpected error when changing worlds, are you sure the world you are trying to warp to has the same amount of channels?");

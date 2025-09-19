@@ -20,18 +20,20 @@
  */
 package client.inventory;
 
-import net.server.audit.locks.MonitoredLockType;
-import net.server.audit.locks.factory.MonitoredReentrantLockFactory;
 import tools.DatabaseConnection;
 import tools.Pair;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- *
  * @author Flav
  */
 public enum ItemFactory {
@@ -47,17 +49,17 @@ public enum ItemFactory {
     DUEY(9, false);
     private final int value;
     private final boolean account;
-    
+
     private static final int lockCount = 400;
     private static final Lock[] locks = new Lock[lockCount];  // thanks Masterrulax for pointing out a bottleneck issue here
-    
+
     static {
         for (int i = 0; i < lockCount; i++) {
-            locks[i] = MonitoredReentrantLockFactory.createLock(MonitoredLockType.ITEM, true);
+            locks[i] = new ReentrantLock(true);
         }
     }
-    
-    private ItemFactory(int value, boolean account) {
+
+    ItemFactory(int value, boolean account) {
         this.value = value;
         this.account = account;
     }
@@ -66,22 +68,28 @@ public enum ItemFactory {
         return value;
     }
 
-    public List<Pair<Item, MapleInventoryType>> loadItems(int id, boolean login) throws SQLException {
-        if(value != 6) return loadItemsCommon(id, login);
-        else return loadItemsMerchant(id, login);
+    public List<Pair<Item, InventoryType>> loadItems(int id, boolean login) throws SQLException {
+        if (value != 6) {
+            return loadItemsCommon(id, login);
+        } else {
+            return loadItemsMerchant(id, login);
+        }
     }
-    
-    public void saveItems(List<Pair<Item, MapleInventoryType>> items, int id, Connection con) throws SQLException {
+
+    public void saveItems(List<Pair<Item, InventoryType>> items, int id, Connection con) throws SQLException {
         saveItems(items, null, id, con);
     }
-    
-    public void saveItems(List<Pair<Item, MapleInventoryType>> items, List<Short> bundlesList, int id, Connection con) throws SQLException {
+
+    public void saveItems(List<Pair<Item, InventoryType>> items, List<Short> bundlesList, int id, Connection con) throws SQLException {
         // thanks Arufonsu, MedicOP, BHB for pointing a "synchronized" bottleneck here
-        
-        if(value != 6) saveItemsCommon(items, id, con);
-        else saveItemsMerchant(items, bundlesList, id, con);
+
+        if (value != 6) {
+            saveItemsCommon(items, id, con);
+        } else {
+            saveItemsMerchant(items, bundlesList, id, con);
+        }
     }
-    
+
     private static Equip loadEquipFromResultSet(ResultSet rs) throws SQLException {
         Equip equip = new Equip(rs.getInt("itemid"), (short) rs.getInt("position"));
         equip.setOwner(rs.getString("owner"));
@@ -110,13 +118,13 @@ public enum ItemFactory {
         equip.setExpiration(rs.getLong("expiration"));
         equip.setGiftFrom(rs.getString("giftFrom"));
         equip.setRingId(rs.getInt("ringid"));
-        
+
         return equip;
     }
-    
+
     public static List<Pair<Item, Integer>> loadEquippedItems(int id, boolean isAccount, boolean login) throws SQLException {
         List<Pair<Item, Integer>> items = new ArrayList<>();
-        
+
         StringBuilder query = new StringBuilder();
         query.append("SELECT * FROM ");
         query.append("(SELECT id, accountid FROM characters) AS accountterm ");
@@ -126,12 +134,12 @@ public enum ItemFactory {
         query.append("WHERE accountterm.`");
         query.append(isAccount ? "accountid" : "characterid");
         query.append("` = ?");
-        query.append(login ? " AND `inventorytype` = " + MapleInventoryType.EQUIPPED.getType() : "");
-        
+        query.append(login ? " AND `inventorytype` = " + InventoryType.EQUIPPED.getType() : "");
+
         try (Connection con = DatabaseConnection.getConnection()) {
             try (PreparedStatement ps = con.prepareStatement(query.toString())) {
                 ps.setInt(1, id);
-                
+
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         Integer cid = rs.getInt("characterid");
@@ -140,12 +148,12 @@ public enum ItemFactory {
                 }
             }
         }
-        
+
         return items;
     }
-    
-    private List<Pair<Item, MapleInventoryType>> loadItemsCommon(int id, boolean login) throws SQLException {
-        List<Pair<Item, MapleInventoryType>> items = new ArrayList<>();
+
+    private List<Pair<Item, InventoryType>> loadItemsCommon(int id, boolean login) throws SQLException {
+        List<Pair<Item, InventoryType>> items = new ArrayList<>();
 
         try (Connection con = DatabaseConnection.getConnection()) {
             StringBuilder query = new StringBuilder();
@@ -153,7 +161,7 @@ public enum ItemFactory {
             query.append(account ? "accountid" : "characterid").append("` = ?");
 
             if (login) {
-                query.append(" AND `inventorytype` = ").append(MapleInventoryType.EQUIPPED.getType());
+                query.append(" AND `inventorytype` = ").append(InventoryType.EQUIPPED.getType());
             }
 
             try (PreparedStatement ps = con.prepareStatement(query.toString())) {
@@ -162,9 +170,9 @@ public enum ItemFactory {
 
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        MapleInventoryType mit = MapleInventoryType.getByType(rs.getByte("inventorytype"));
+                        InventoryType mit = InventoryType.getByType(rs.getByte("inventorytype"));
 
-                        if (mit.equals(MapleInventoryType.EQUIP) || mit.equals(MapleInventoryType.EQUIPPED)) {
+                        if (mit.equals(InventoryType.EQUIP) || mit.equals(InventoryType.EQUIPPED)) {
                             items.add(new Pair<>(loadEquipFromResultSet(rs), mit));
                         } else {
                             int petid = rs.getInt("petid");
@@ -186,7 +194,7 @@ public enum ItemFactory {
         return items;
     }
 
-    private void saveItemsCommon(List<Pair<Item, MapleInventoryType>> items, int id, Connection con) throws SQLException {
+    private void saveItemsCommon(List<Pair<Item, InventoryType>> items, int id, Connection con) throws SQLException {
         Lock lock = locks[id % lockCount];
         lock.lock();
         try {
@@ -202,9 +210,9 @@ public enum ItemFactory {
 
             try (PreparedStatement psItem = con.prepareStatement("INSERT INTO `inventoryitems` VALUES (DEFAULT, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
                 if (!items.isEmpty()) {
-                    for (Pair<Item, MapleInventoryType> pair : items) {
+                    for (Pair<Item, InventoryType> pair : items) {
                         Item item = pair.getLeft();
-                        MapleInventoryType mit = pair.getRight();
+                        InventoryType mit = pair.getRight();
                         psItem.setInt(1, value);
                         psItem.setString(2, account ? null : String.valueOf(id));
                         psItem.setString(3, account ? String.valueOf(id) : null);
@@ -219,7 +227,7 @@ public enum ItemFactory {
                         psItem.setString(12, item.getGiftFrom());
                         psItem.executeUpdate();
 
-                        if (mit.equals(MapleInventoryType.EQUIP) || mit.equals(MapleInventoryType.EQUIPPED)) {
+                        if (mit.equals(InventoryType.EQUIP) || mit.equals(InventoryType.EQUIPPED)) {
                             try (PreparedStatement psEquip = con.prepareStatement("INSERT INTO `inventoryequipment` VALUES (DEFAULT, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                                 try (ResultSet rs = psItem.getGeneratedKeys()) {
                                     if (!rs.next()) {
@@ -262,9 +270,9 @@ public enum ItemFactory {
             lock.unlock();
         }
     }
-    
-    private List<Pair<Item, MapleInventoryType>> loadItemsMerchant(int id, boolean login) throws SQLException {
-        List<Pair<Item, MapleInventoryType>> items = new ArrayList<>();
+
+    private List<Pair<Item, InventoryType>> loadItemsMerchant(int id, boolean login) throws SQLException {
+        List<Pair<Item, InventoryType>> items = new ArrayList<>();
 
         try (Connection con = DatabaseConnection.getConnection()) {
             StringBuilder query = new StringBuilder();
@@ -272,7 +280,7 @@ public enum ItemFactory {
             query.append(account ? "accountid" : "characterid").append("` = ?");
 
             if (login) {
-                query.append(" AND `inventorytype` = ").append(MapleInventoryType.EQUIPPED.getType());
+                query.append(" AND `inventorytype` = ").append(InventoryType.EQUIPPED.getType());
             }
 
             try (PreparedStatement ps = con.prepareStatement(query.toString())) {
@@ -292,9 +300,9 @@ public enum ItemFactory {
                             }
                         }
 
-                        MapleInventoryType mit = MapleInventoryType.getByType(rs.getByte("inventorytype"));
+                        InventoryType mit = InventoryType.getByType(rs.getByte("inventorytype"));
 
-                        if (mit.equals(MapleInventoryType.EQUIP) || mit.equals(MapleInventoryType.EQUIPPED)) {
+                        if (mit.equals(InventoryType.EQUIP) || mit.equals(InventoryType.EQUIPPED)) {
                             items.add(new Pair<>(loadEquipFromResultSet(rs), mit));
                         } else {
                             if (bundles > 0) {
@@ -318,7 +326,7 @@ public enum ItemFactory {
         return items;
     }
 
-    private void saveItemsMerchant(List<Pair<Item, MapleInventoryType>> items, List<Short> bundlesList, int id, Connection con) throws SQLException {
+    private void saveItemsMerchant(List<Pair<Item, InventoryType>> items, List<Short> bundlesList, int id, Connection con) throws SQLException {
         Lock lock = locks[id % lockCount];
         lock.lock();
         try {
@@ -338,10 +346,10 @@ public enum ItemFactory {
             }
 
             int i = 0;
-            for (Pair<Item, MapleInventoryType> pair : items) {
+            for (Pair<Item, InventoryType> pair : items) {
                 final Item item = pair.getLeft();
                 final Short bundles = bundlesList.get(i);
-                final MapleInventoryType mit = pair.getRight();
+                final InventoryType mit = pair.getRight();
                 i++;
 
                 final int genKey;
@@ -379,7 +387,7 @@ public enum ItemFactory {
                 }
 
                 // Equipment
-                if (mit.equals(MapleInventoryType.EQUIP) || mit.equals(MapleInventoryType.EQUIPPED)) {
+                if (mit.equals(InventoryType.EQUIP) || mit.equals(InventoryType.EQUIPPED)) {
                     try (PreparedStatement ps = con.prepareStatement("INSERT INTO `inventoryequipment` VALUES (DEFAULT, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                         ps.setInt(1, genKey);
 

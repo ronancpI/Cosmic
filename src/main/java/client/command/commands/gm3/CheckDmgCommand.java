@@ -23,9 +23,9 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleBuffStat;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.BuffStat;
+import client.Character;
+import client.Client;
 import client.command.Command;
 
 public class CheckDmgCommand extends Command {
@@ -34,16 +34,20 @@ public class CheckDmgCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
-        MapleCharacter victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
+        Character victim = c.getWorldServer().getPlayerStorage().getCharacterByName(params[0]);
         if (victim != null) {
             int maxBase = victim.calculateMaxBaseDamage(victim.getTotalWatk());
-            Integer watkBuff = victim.getBuffedValue(MapleBuffStat.WATK);
-            Integer matkBuff = victim.getBuffedValue(MapleBuffStat.MATK);
+            Integer watkBuff = victim.getBuffedValue(BuffStat.WATK);
+            Integer matkBuff = victim.getBuffedValue(BuffStat.MATK);
             int blessing = victim.getSkillLevel(10000000 * player.getJobType() + 12);
-            if (watkBuff == null) watkBuff = 0;
-            if (matkBuff == null) matkBuff = 0;
+            if (watkBuff == null) {
+                watkBuff = 0;
+            }
+            if (matkBuff == null) {
+                matkBuff = 0;
+            }
 
             player.dropMessage(5, "Cur Str: " + victim.getTotalStr() + " Cur Dex: " + victim.getTotalDex() + " Cur Int: " + victim.getTotalInt() + " Cur Luk: " + victim.getTotalLuk());
             player.dropMessage(5, "Cur WATK: " + victim.getTotalWatk() + " Cur MATK: " + victim.getTotalMagic());

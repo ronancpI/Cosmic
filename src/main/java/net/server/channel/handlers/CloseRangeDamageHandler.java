@@ -21,50 +21,68 @@
 */
 package net.server.channel.handlers;
 
-import client.*;
+import client.BuffStat;
+import client.Character;
+import client.Client;
+import client.Job;
+import client.Skill;
+import client.SkillFactory;
 import config.YamlConfig;
 import constants.game.GameConstants;
-import constants.skills.*;
-import server.MapleStatEffect;
-import tools.MaplePacketCreator;
+import constants.id.MapId;
+import constants.skills.Crusader;
+import constants.skills.DawnWarrior;
+import constants.skills.DragonKnight;
+import constants.skills.Hero;
+import constants.skills.NightWalker;
+import constants.skills.Rogue;
+import constants.skills.WindArcher;
+import net.packet.InPacket;
+import server.StatEffect;
+import tools.PacketCreator;
 import tools.Pair;
-import tools.data.input.SeekableLittleEndianAccessor;
 
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 public final class CloseRangeDamageHandler extends AbstractDealDamageHandler {
-    
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
         
         /*long timeElapsed = currentServerTime() - chr.getAutobanManager().getLastSpam(8);
         if(timeElapsed < 300) {
                 AutobanFactory.FAST_ATTACK.alert(chr, "Time: " + timeElapsed);
         }
         chr.getAutobanManager().spam(8);*/
-        
-        AttackInfo attack = parseDamage(slea, chr, false, false);
-        if (chr.getBuffEffect(MapleBuffStat.MORPH) != null) {
-            if(chr.getBuffEffect(MapleBuffStat.MORPH).isMorphWithoutAttack()) {
+
+        AttackInfo attack = parseDamage(p, chr, false, false);
+        if (chr.getBuffEffect(BuffStat.MORPH) != null) {
+            if (chr.getBuffEffect(BuffStat.MORPH).isMorphWithoutAttack()) {
                 // How are they attacking when the client won't let them?
                 chr.getClient().disconnect(false, false);
-                return; 
+                return;
             }
         }
-        
+
         if (chr.getDojoEnergy() < 10000 && (attack.skill == 1009 || attack.skill == 10001009 || attack.skill == 20001009)) // PE hacking or maybe just lagging
+        {
             return;
-        if (GameConstants.isDojo(chr.getMap().getId()) && attack.numAttacked > 0) {
-            chr.setDojoEnergy(chr.getDojoEnergy() + YamlConfig.config.server.DOJO_ENERGY_ATK);
-            c.announce(MaplePacketCreator.getEnergy("energy", chr.getDojoEnergy()));
         }
-        
-        chr.getMap().broadcastMessage(chr, MaplePacketCreator.closeRangeAttack(chr, attack.skill, attack.skilllevel, attack.stance, attack.numAttackedAndDamage, attack.allDamage, attack.speed, attack.direction, attack.display), false, true);
+        if (MapId.isDojo(chr.getMap().getId()) && attack.numAttacked > 0) {
+            chr.setDojoEnergy(chr.getDojoEnergy() + YamlConfig.config.server.DOJO_ENERGY_ATK);
+            c.sendPacket(PacketCreator.getEnergy("energy", chr.getDojoEnergy()));
+        }
+
+        chr.getMap().broadcastMessage(chr, PacketCreator.closeRangeAttack(chr, attack.skill, attack.skilllevel,
+                attack.stance, attack.numAttackedAndDamage, attack.targets, attack.speed, attack.direction,
+                attack.display), false, true);
         int numFinisherOrbs = 0;
-        Integer comboBuff = chr.getBuffedValue(MapleBuffStat.COMBO);
+        Integer comboBuff = chr.getBuffedValue(BuffStat.COMBO);
         if (GameConstants.isFinisherSkill(attack.skill)) {
             if (comboBuff != null) {
                 numFinisherOrbs = comboBuff - 1;
@@ -72,23 +90,28 @@ public final class CloseRangeDamageHandler extends AbstractDealDamageHandler {
             chr.handleOrbconsume();
         } else if (attack.numAttacked > 0) {
             if (attack.skill != 1111008 && comboBuff != null) {
-                int orbcount = chr.getBuffedValue(MapleBuffStat.COMBO);
+                int orbcount = chr.getBuffedValue(BuffStat.COMBO);
                 int oid = chr.isCygnus() ? DawnWarrior.COMBO : Crusader.COMBO;
                 int advcomboid = chr.isCygnus() ? DawnWarrior.ADVANCED_COMBO : Hero.ADVANCED_COMBO;
                 Skill combo = SkillFactory.getSkill(oid);
                 Skill advcombo = SkillFactory.getSkill(advcomboid);
-                MapleStatEffect ceffect;
+                StatEffect ceffect;
                 int advComboSkillLevel = chr.getSkillLevel(advcombo);
                 if (advComboSkillLevel > 0) {
                     ceffect = advcombo.getEffect(advComboSkillLevel);
                 } else {
                     int comboLv = chr.getSkillLevel(combo);
-                    if(comboLv <= 0 || chr.isGM()) comboLv = SkillFactory.getSkill(oid).getMaxLevel();
-                    
-                    if(comboLv > 0) ceffect = combo.getEffect(comboLv);
-                    else ceffect = null;
+                    if (comboLv <= 0 || chr.isGM()) {
+                        comboLv = SkillFactory.getSkill(oid).getMaxLevel();
+                    }
+
+                    if (comboLv > 0) {
+                        ceffect = combo.getEffect(comboLv);
+                    } else {
+                        ceffect = null;
+                    }
                 }
-                if(ceffect != null) {
+                if (ceffect != null) {
                     if (orbcount < ceffect.getX() + 1) {
                         int neworbcount = orbcount + 1;
                         if (advComboSkillLevel > 0 && ceffect.makeChanceResult()) {
@@ -98,17 +121,19 @@ public final class CloseRangeDamageHandler extends AbstractDealDamageHandler {
                         }
 
                         int olv = chr.getSkillLevel(oid);
-                        if(olv <= 0) olv = SkillFactory.getSkill(oid).getMaxLevel();
-                        
+                        if (olv <= 0) {
+                            olv = SkillFactory.getSkill(oid).getMaxLevel();
+                        }
+
                         int duration = combo.getEffect(olv).getDuration();
-                        List<Pair<MapleBuffStat, Integer>> stat = Collections.singletonList(new Pair<>(MapleBuffStat.COMBO, neworbcount));
-                        chr.setBuffedValue(MapleBuffStat.COMBO, neworbcount);                 
-                        duration -= (int) (currentServerTime() - chr.getBuffedStarttime(MapleBuffStat.COMBO));
-                        c.announce(MaplePacketCreator.giveBuff(oid, duration, stat));
-                        chr.getMap().broadcastMessage(chr, MaplePacketCreator.giveForeignBuff(chr.getId(), stat), false);
+                        List<Pair<BuffStat, Integer>> stat = Collections.singletonList(new Pair<>(BuffStat.COMBO, neworbcount));
+                        chr.setBuffedValue(BuffStat.COMBO, neworbcount);
+                        duration -= (int) (currentServerTime() - chr.getBuffedStarttime(BuffStat.COMBO));
+                        c.sendPacket(PacketCreator.giveBuff(oid, duration, stat));
+                        chr.getMap().broadcastMessage(chr, PacketCreator.giveForeignBuff(chr.getId(), stat), false);
                     }
                 }
-            } else if (chr.getSkillLevel(chr.isCygnus() ? SkillFactory.getSkill(15100004) : SkillFactory.getSkill(5110001)) > 0 && (chr.getJob().isA(MapleJob.MARAUDER) || chr.getJob().isA(MapleJob.THUNDERBREAKER2))) {
+            } else if (chr.getSkillLevel(chr.isCygnus() ? SkillFactory.getSkill(15100004) : SkillFactory.getSkill(5110001)) > 0 && (chr.getJob().isA(Job.MARAUDER) || chr.getJob().isA(Job.THUNDERBREAKER2))) {
                 for (int i = 0; i < attack.numAttacked; i++) {
                     chr.handleEnergyChargeGain();
                 }
@@ -116,11 +141,11 @@ public final class CloseRangeDamageHandler extends AbstractDealDamageHandler {
         }
         if (attack.numAttacked > 0 && attack.skill == DragonKnight.SACRIFICE) {
             int totDamageToOneMonster = 0; // sacrifice attacks only 1 mob with 1 attack
-            final Iterator<List<Integer>> dmgIt = attack.allDamage.values().iterator();
+            final Iterator<AttackTarget> dmgIt = attack.targets.values().iterator();
             if (dmgIt.hasNext()) {
-                totDamageToOneMonster = dmgIt.next().get(0);
+                totDamageToOneMonster = dmgIt.next().damageLines().getFirst();
             }
-            
+
             chr.safeAddHP(-1 * totDamageToOneMonster * attack.getAttackEffect(chr, null).getX() / 100);
         }
         if (attack.numAttacked > 0 && attack.skill == 1211002) {
@@ -130,7 +155,7 @@ public final class CloseRangeDamageHandler extends AbstractDealDamageHandler {
                 advcharge_prob = SkillFactory.getSkill(1220010).getEffect(advcharge_level).makeChanceResult();
             }
             if (!advcharge_prob) {
-                chr.cancelEffectFromBuffStat(MapleBuffStat.WK_CHARGE);
+                chr.cancelEffectFromBuffStat(BuffStat.WK_CHARGE);
             }
         }
         int attackCount = 1;
@@ -144,30 +169,30 @@ public final class CloseRangeDamageHandler extends AbstractDealDamageHandler {
             if (chr.getDojoEnergy() < 10000) { // PE hacking or maybe just lagging
                 return;
             }
-            
+
             chr.setDojoEnergy(0);
-            c.announce(MaplePacketCreator.getEnergy("energy", chr.getDojoEnergy()));
-            c.announce(MaplePacketCreator.serverNotice(5, "As you used the secret skill, your energy bar has been reset."));
+            c.sendPacket(PacketCreator.getEnergy("energy", chr.getDojoEnergy()));
+            c.sendPacket(PacketCreator.serverNotice(5, "As you used the secret skill, your energy bar has been reset."));
         } else if (attack.skill > 0) {
             Skill skill = SkillFactory.getSkill(attack.skill);
-            MapleStatEffect effect_ = skill.getEffect(chr.getSkillLevel(skill));
+            StatEffect effect_ = skill.getEffect(chr.getSkillLevel(skill));
             if (effect_.getCooldown() > 0) {
                 if (chr.skillIsCooling(attack.skill)) {
                     return;
                 } else {
-                    c.announce(MaplePacketCreator.skillCooldown(attack.skill, effect_.getCooldown()));
-                    chr.addCooldown(attack.skill, currentServerTime(), effect_.getCooldown() * 1000);
+                    c.sendPacket(PacketCreator.skillCooldown(attack.skill, effect_.getCooldown()));
+                    chr.addCooldown(attack.skill, currentServerTime(), SECONDS.toMillis(effect_.getCooldown()));
                 }
             }
         }
-        if ((chr.getSkillLevel(SkillFactory.getSkill(NightWalker.VANISH)) > 0 || chr.getSkillLevel(SkillFactory.getSkill(Rogue.DARK_SIGHT)) > 0) && chr.getBuffedValue(MapleBuffStat.DARKSIGHT) != null) {// && chr.getBuffSource(MapleBuffStat.DARKSIGHT) != 9101004
-            chr.cancelEffectFromBuffStat(MapleBuffStat.DARKSIGHT);
-            chr.cancelBuffStats(MapleBuffStat.DARKSIGHT);
-        } else if(chr.getSkillLevel(SkillFactory.getSkill(WindArcher.WIND_WALK)) > 0 && chr.getBuffedValue(MapleBuffStat.WIND_WALK) != null) {
-            chr.cancelEffectFromBuffStat(MapleBuffStat.WIND_WALK);
-            chr.cancelBuffStats(MapleBuffStat.WIND_WALK);
+        if ((chr.getSkillLevel(SkillFactory.getSkill(NightWalker.VANISH)) > 0 || chr.getSkillLevel(SkillFactory.getSkill(Rogue.DARK_SIGHT)) > 0) && chr.getBuffedValue(BuffStat.DARKSIGHT) != null) {// && chr.getBuffSource(BuffStat.DARKSIGHT) != 9101004
+            chr.cancelEffectFromBuffStat(BuffStat.DARKSIGHT);
+            chr.cancelBuffStats(BuffStat.DARKSIGHT);
+        } else if (chr.getSkillLevel(SkillFactory.getSkill(WindArcher.WIND_WALK)) > 0 && chr.getBuffedValue(BuffStat.WIND_WALK) != null) {
+            chr.cancelEffectFromBuffStat(BuffStat.WIND_WALK);
+            chr.cancelBuffStats(BuffStat.WIND_WALK);
         }
-        
+
         applyAttack(attack, chr, attackCount);
     }
 }

@@ -21,14 +21,15 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import constants.id.NpcId;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 
-public final class UseWaterOfLifeHandler extends AbstractMaplePacketHandler {
+public final class UseWaterOfLifeHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        c.getAbstractPlayerInteraction().openNpc(1032102, "waterOfLife");
+    public final void handlePacket(InPacket p, Client c) {
+        c.getAbstractPlayerInteraction().openNpc(NpcId.MAR_THE_FAIRY, "waterOfLife");
     }
 }

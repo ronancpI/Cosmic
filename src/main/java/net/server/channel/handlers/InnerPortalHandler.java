@@ -21,16 +21,15 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 
 /**
- *
  * @author BubblesDev
  */
-public final class InnerPortalHandler extends AbstractMaplePacketHandler {
+public final class InnerPortalHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
+    public final void handlePacket(InPacket p, Client c) {
     }
 }

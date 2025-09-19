@@ -21,201 +21,207 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import client.inventory.MapleInventoryType;
+import client.Character;
+import client.Client;
 import client.autoban.AutobanManager;
+import client.inventory.InventoryType;
+import client.inventory.manipulator.InventoryManipulator;
+import constants.id.ItemId;
+import constants.id.MobId;
 import constants.inventory.ItemConstants;
-import net.AbstractMaplePacketHandler;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import server.MapleItemInformationProvider;
-import server.life.MapleMonster;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import server.ItemInformationProvider;
+import server.life.Monster;
+import tools.PacketCreator;
 
 /**
- *
  * @author kevintjuh93
  */
-public final class UseCatchItemHandler extends AbstractMaplePacketHandler {
+public final class UseCatchItemHandler extends AbstractPacketHandler {
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
         AutobanManager abm = chr.getAutobanManager();
-        slea.readInt();
+        p.readInt();
         abm.setTimestamp(5, Server.getInstance().getCurrentTimestamp(), 4);
-        slea.readShort();
-        int itemId = slea.readInt();
-        int monsterid = slea.readInt();
-        
-        MapleMonster mob = chr.getMap().getMonsterByOid(monsterid);
+        p.readShort();
+        int itemId = p.readInt();
+        int monsterid = p.readInt();
+
+        Monster mob = chr.getMap().getMonsterByOid(monsterid);
         if (chr.getInventory(ItemConstants.getInventoryType(itemId)).countById(itemId) <= 0) {
-           return;
+            return;
         }
         if (mob == null) {
-           return;
+            return;
         }
         switch (itemId) {
-            case 2270000:
-                if (mob.getId() == 9300101) {
-                    chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                    mob.getMap().killMonster(mob, null, false);
-                    MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                    MapleInventoryManipulator.addById(c, 1902000, (short) 1, "", -1);
-                 }
-                c.announce(MaplePacketCreator.enableActions());
+            case ItemId.PHEROMONE_PERFUME:
+                if (mob.getId() == MobId.TAMABLE_HOG) {
+                    chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                    killMonster(mob);
+                    InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                    InventoryManipulator.addById(c, ItemId.HOG, (short) 1, "", -1);
+                }
+                c.sendPacket(PacketCreator.enableActions());
                 break;
-            case 2270001:
-                if (mob.getId() == 9500197) {
+            case ItemId.POUCH:
+                if (mob.getId() == MobId.GHOST) {
                     if ((abm.getLastSpam(10) + 1000) < currentServerTime()) {
                         if (mob.getHp() < ((mob.getMaxHp() / 10) * 4)) {
-                            chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                            mob.getMap().killMonster(mob, null, false);
-                            MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                            MapleInventoryManipulator.addById(c, 4031830, (short) 1, "", -1);
+                            chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                            killMonster(mob);
+                            InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                            InventoryManipulator.addById(c, ItemId.GHOST_SACK, (short) 1, "", -1);
                         } else {
                             abm.spam(10);
-                            c.announce(MaplePacketCreator.catchMessage(0));
+                            c.sendPacket(PacketCreator.catchMessage(0));
                         }
                     }
-                    c.announce(MaplePacketCreator.enableActions());
+                    c.sendPacket(PacketCreator.enableActions());
                 }
                 break;
-            case 2270002:
-                if (mob.getId() == 9300157) {
+            case ItemId.ARPQ_ELEMENT_ROCK:
+                if (mob.getId() == MobId.ARPQ_SCORPION) {
                     if ((abm.getLastSpam(10) + 800) < currentServerTime()) {
                         if (mob.getHp() < ((mob.getMaxHp() / 10) * 4)) {
-                            if (chr.canHold(4031868, 1)) {
+                            if (chr.canHold(ItemId.ARPQ_SPIRIT_JEWEL, 1)) {
                                 if (Math.random() < 0.5) { // 50% chance
-                                    chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                                    mob.getMap().killMonster(mob, null, false);
-                                    MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                                    MapleInventoryManipulator.addById(c, 4031868, (short) 1, "", -1);
+                                    chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                                    killMonster(mob);
+                                    InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                                    InventoryManipulator.addById(c, ItemId.ARPQ_SPIRIT_JEWEL, (short) 1, "", -1);
+                                    chr.updateAriantScore();
                                 } else {
-                                    chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 0));
+                                    chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 0));
                                 }
                             } else {
                                 chr.dropMessage(5, "Make a ETC slot available before using this item.");
                             }
-                            
+
                             abm.spam(10);
                         } else {
-                            c.announce(MaplePacketCreator.catchMessage(0));
+                            c.sendPacket(PacketCreator.catchMessage(0));
                         }
                     }
-                    c.announce(MaplePacketCreator.enableActions());
+                    c.sendPacket(PacketCreator.enableActions());
                 }
                 break;
-            case 2270003:
-                if (mob.getId() == 9500320) {
+            case ItemId.MAGIC_CANE:
+                if (mob.getId() == MobId.LOST_RUDOLPH) {
                     if (mob.getHp() < ((mob.getMaxHp() / 10) * 4)) {
-                        chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                        mob.getMap().killMonster(mob, null, false);
-                        MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                        MapleInventoryManipulator.addById(c, 4031887, (short) 1, "", -1);
+                        chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                        killMonster(mob);
+                        InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                        InventoryManipulator.addById(c, ItemId.TAMED_RUDOLPH, (short) 1, "", -1);
                     } else {
-                        c.announce(MaplePacketCreator.catchMessage(0));
+                        c.sendPacket(PacketCreator.catchMessage(0));
                     }
                 }
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 break;
-            case 2270005:
-                if (mob.getId() == 9300187) {
+            case ItemId.TRANSPARENT_MARBLE_1:
+                if (mob.getId() == MobId.KING_SLIME_DOJO) {
                     if (mob.getHp() < ((mob.getMaxHp() / 10) * 3)) {
-                        chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                        mob.getMap().killMonster(mob, null, false);
-                        MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                        MapleInventoryManipulator.addById(c, 2109001, (short) 1, "", -1);
+                        chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                        killMonster(mob);
+                        InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                        InventoryManipulator.addById(c, ItemId.MONSTER_MARBLE_1, (short) 1, "", -1);
                     } else {
-                        c.announce(MaplePacketCreator.catchMessage(0));
+                        c.sendPacket(PacketCreator.catchMessage(0));
                     }
                 }
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 break;
-            case 2270006:
-                if (mob.getId() == 9300189) {
+            case ItemId.TRANSPARENT_MARBLE_2:
+                if (mob.getId() == MobId.FAUST_DOJO) {
                     if (mob.getHp() < ((mob.getMaxHp() / 10) * 3)) {
-                        chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                        mob.getMap().killMonster(mob, null, false);
-                        MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                        MapleInventoryManipulator.addById(c, 2109002, (short) 1, "", -1);
+                        chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                        killMonster(mob);
+                        InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                        InventoryManipulator.addById(c, ItemId.MONSTER_MARBLE_2, (short) 1, "", -1);
                     } else {
-                        c.announce(MaplePacketCreator.catchMessage(0));
+                        c.sendPacket(PacketCreator.catchMessage(0));
                     }
                 }
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 break;
-            case 2270007:
-                if (mob.getId() == 9300191) {
+            case ItemId.TRANSPARENT_MARBLE_3:
+                if (mob.getId() == MobId.MUSHMOM_DOJO) {
                     if (mob.getHp() < ((mob.getMaxHp() / 10) * 3)) {
-                        chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                        mob.getMap().killMonster(mob, null, false);
-                        MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                        MapleInventoryManipulator.addById(c, 2109003, (short) 1, "", -1);
+                        chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                        killMonster(mob);
+                        InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                        InventoryManipulator.addById(c, ItemId.MONSTER_MARBLE_3, (short) 1, "", -1);
                     } else {
-                        c.announce(MaplePacketCreator.catchMessage(0));
+                        c.sendPacket(PacketCreator.catchMessage(0));
                     }
                 }
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 break;
-            case 2270004:
-                if (mob.getId() == 9300175) {
+            case ItemId.EPQ_PURIFICATION_MARBLE:
+                if (mob.getId() == MobId.POISON_FLOWER) {
                     if (mob.getHp() < ((mob.getMaxHp() / 10) * 4)) {
-                    chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                    mob.getMap().killMonster(mob, null, false);
-                    MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                    MapleInventoryManipulator.addById(c, 4001169, (short) 1, "", -1);
+                        chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                        killMonster(mob);
+                        InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                        InventoryManipulator.addById(c, ItemId.EPQ_MONSTER_MARBLE, (short) 1, "", -1);
                     } else {
-                    c.announce(MaplePacketCreator.catchMessage(0));
+                        c.sendPacket(PacketCreator.catchMessage(0));
                     }
                 }
-                c.announce(MaplePacketCreator.enableActions());
+                c.sendPacket(PacketCreator.enableActions());
                 break;
-            case 2270008:
-                if (mob.getId() == 9500336) {
+            case ItemId.FISH_NET:
+                if (mob.getId() == MobId.P_JUNIOR) {
                     if ((abm.getLastSpam(10) + 3000) < currentServerTime()) {
                         abm.spam(10);
-                        chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                        mob.getMap().killMonster(mob, null, false);
-                        MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                        MapleInventoryManipulator.addById(c, 2022323, (short) 1, "", -1);
+                        chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                        killMonster(mob);
+                        InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                        InventoryManipulator.addById(c, ItemId.FISH_NET_WITH_A_CATCH, (short) 1, "", -1);
                     } else {
                         chr.message("You cannot use the Fishing Net yet.");
                     }
-                    c.announce(MaplePacketCreator.enableActions());
+                    c.sendPacket(PacketCreator.enableActions());
                 }
                 break;
             default:
                 // proper Fish catch, thanks to Dragohe4rt
-                
-                MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
+
+                ItemInformationProvider ii = ItemInformationProvider.getInstance();
                 int itemGanho = ii.getCreateItem(itemId);
                 int mobItem = ii.getMobItem(itemId);
-                
+
                 if (itemGanho != 0 && mobItem == mob.getId()) {
                     int timeCatch = ii.getUseDelay(itemId);
                     int mobHp = ii.getMobHP(itemId);
-                    
+
                     if (timeCatch != 0 && (abm.getLastSpam(10) + timeCatch) < currentServerTime()) {
                         if (mobHp != 0 && mob.getHp() < ((mob.getMaxHp() / 100) * mobHp)) {
-                            chr.getMap().broadcastMessage(MaplePacketCreator.catchMonster(monsterid, itemId, (byte) 1));
-                            mob.getMap().killMonster(mob, null, false);
-                            MapleInventoryManipulator.removeById(c, MapleInventoryType.USE, itemId, 1, true, true);
-                            MapleInventoryManipulator.addById(c, itemGanho, (short) 1, "", -1);
-                        } else if (mob.getId() != 9500336) {
+                            chr.getMap().broadcastMessage(PacketCreator.catchMonster(monsterid, itemId, (byte) 1));
+                            killMonster(mob);
+                            InventoryManipulator.removeById(c, InventoryType.USE, itemId, 1, true, true);
+                            InventoryManipulator.addById(c, itemGanho, (short) 1, "", -1);
+                        } else if (mob.getId() != MobId.P_JUNIOR) {
                             if (mobHp != 0) {
                                 abm.spam(10);
-                                c.announce(MaplePacketCreator.catchMessage(0));
+                                c.sendPacket(PacketCreator.catchMessage(0));
                             }
                         } else {
                             chr.message("You cannot use the Fishing Net yet.");
                         }
                     }
                 }
-                c.announce(MaplePacketCreator.enableActions());
-                
+                c.sendPacket(PacketCreator.enableActions());
+
                 // System.out.println("UseCatchItemHandler: \r\n" + slea.toString());
         }
+    }
+
+    private static void killMonster(Monster mob) {
+        mob.getMap().killMonster(mob, null, false, (short) 0);
     }
 }

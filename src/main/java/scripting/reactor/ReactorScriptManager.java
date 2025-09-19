@@ -21,14 +21,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package scripting.reactor;
 
-import client.MapleClient;
-import jdk.nashorn.api.scripting.NashornScriptEngine;
+import client.Client;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scripting.AbstractScriptManager;
-import server.maps.MapleReactor;
+import server.maps.Reactor;
 import server.maps.ReactorDropEntry;
 import tools.DatabaseConnection;
-import tools.FilePrinter;
 
+import javax.script.Invocable;
+import javax.script.ScriptEngine;
 import javax.script.ScriptException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -42,50 +44,50 @@ import java.util.Map;
  * @author Lerk
  */
 public class ReactorScriptManager extends AbstractScriptManager {
+    private static final Logger log = LoggerFactory.getLogger(ReactorScriptManager.class);
+    private static final ReactorScriptManager instance = new ReactorScriptManager();
 
-    private static ReactorScriptManager instance = new ReactorScriptManager();
-    
+    private final Map<Integer, List<ReactorDropEntry>> drops = new HashMap<>();
+
     public static ReactorScriptManager getInstance() {
         return instance;
     }
-    
-    private Map<Integer, List<ReactorDropEntry>> drops = new HashMap<>();
-    
-    public void onHit(MapleClient c, MapleReactor reactor) {
+
+    public void onHit(Client c, Reactor reactor) {
         try {
-            NashornScriptEngine iv = getScriptEngine("reactor/" + reactor.getId() + ".js", c);
-            if (iv == null) return;
-            
-            ReactorActionManager rm = new ReactorActionManager(c, reactor, iv);
-            iv.put("rm", rm);
+            Invocable iv = initializeInvocable(c, reactor);
+            if (iv == null) {
+                return;
+            }
+
             iv.invokeFunction("hit");
-        } catch (final NoSuchMethodException e) {} //do nothing, hit is OPTIONAL
-        
-          catch (final ScriptException | NullPointerException e) {
-            FilePrinter.printError(FilePrinter.REACTOR + reactor.getId() + ".txt", e);
+        } catch (final NoSuchMethodException e) {
+            //do nothing, hit is OPTIONAL
+        } catch (final ScriptException | NullPointerException e) {
+            log.error("Error during onHit script for reactor: {}", reactor.getId(), e);
         }
     }
 
-    public void act(MapleClient c, MapleReactor reactor) {
+    public void act(Client c, Reactor reactor) {
         try {
-            NashornScriptEngine iv = getScriptEngine("reactor/" + reactor.getId() + ".js", c);
-            if (iv == null) return;
-            
-            ReactorActionManager rm = new ReactorActionManager(c, reactor, iv);
-            iv.put("rm", rm);
+            Invocable iv = initializeInvocable(c, reactor);
+            if (iv == null) {
+                return;
+            }
+
             iv.invokeFunction("act");
         } catch (final ScriptException | NoSuchMethodException | NullPointerException e) {
-            FilePrinter.printError(FilePrinter.REACTOR + reactor.getId() + ".txt", e);
+            log.error("Error during act script for reactor: {}", reactor.getId(), e);
         }
     }
 
-    public List<ReactorDropEntry> getDrops(int rid) {
-        List<ReactorDropEntry> ret = drops.get(rid);
+    public List<ReactorDropEntry> getDrops(int reactorId) {
+        List<ReactorDropEntry> ret = drops.get(reactorId);
         if (ret == null) {
             ret = new LinkedList<>();
             try (Connection con = DatabaseConnection.getConnection()) {
                 try (PreparedStatement ps = con.prepareStatement("SELECT itemid, chance, questid FROM reactordrops WHERE reactorid = ? AND chance >= 0")) {
-                    ps.setInt(1, rid);
+                    ps.setInt(1, reactorId);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             ret.add(new ReactorDropEntry(rs.getInt("itemid"), rs.getInt("chance"), rs.getInt("questid")));
@@ -93,9 +95,9 @@ public class ReactorScriptManager extends AbstractScriptManager {
                     }
                 }
             } catch (Throwable e) {
-                FilePrinter.printError(FilePrinter.REACTOR + rid + ".txt", e);
+                log.error("Error getting drops for reactor: {}", reactorId);
             }
-            drops.put(rid, ret);
+            drops.put(reactorId, ret);
         }
         return ret;
     }
@@ -104,28 +106,38 @@ public class ReactorScriptManager extends AbstractScriptManager {
         drops.clear();
     }
 
-    public void touch(MapleClient c, MapleReactor reactor) {
+    public void touch(Client c, Reactor reactor) {
         touching(c, reactor, true);
     }
 
-    public void untouch(MapleClient c, MapleReactor reactor) {
+    public void untouch(Client c, Reactor reactor) {
         touching(c, reactor, false);
     }
 
-    private void touching(MapleClient c, MapleReactor reactor, boolean touching) {
+    private void touching(Client c, Reactor reactor, boolean touching) {
+        final String functionName = touching ? "touch" : "untouch";
         try {
-            NashornScriptEngine iv = getScriptEngine("reactor/" + reactor.getId() + ".js", c);
-            if (iv == null) return;
-            
-            ReactorActionManager rm = new ReactorActionManager(c, reactor, iv);
-            iv.put("rm", rm);
-            if (touching) {
-                iv.invokeFunction("touch");
-            } else {
-                iv.invokeFunction("untouch");
+            Invocable iv = initializeInvocable(c, reactor);
+            if (iv == null) {
+                return;
             }
-        } catch (final ScriptException | NoSuchMethodException | NullPointerException ute) {
-            FilePrinter.printError(FilePrinter.REACTOR + reactor.getId() + ".txt", ute);
+
+            iv.invokeFunction(functionName);
+        } catch (final ScriptException | NoSuchMethodException | NullPointerException e) {
+            log.error("Error during {} script for reactor: {}", functionName, reactor.getId(), e);
         }
+    }
+
+    private Invocable initializeInvocable(Client c, Reactor reactor) {
+        ScriptEngine engine = getInvocableScriptEngine("reactor/" + reactor.getId() + ".js", c);
+        if (engine == null) {
+            return null;
+        }
+
+        Invocable iv = (Invocable) engine;
+        ReactorActionManager rm = new ReactorActionManager(c, reactor, iv);
+        engine.put("rm", rm);
+
+        return iv;
     }
 }

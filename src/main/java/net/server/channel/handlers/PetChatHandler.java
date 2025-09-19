@@ -21,37 +21,36 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleClient;
+import client.Client;
 import client.autoban.AutobanFactory;
-import config.YamlConfig;
-import net.AbstractMaplePacketHandler;
-import tools.FilePrinter;
-import tools.LogHelper;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import server.ChatLogger;
+import tools.PacketCreator;
 
-public final class PetChatHandler extends AbstractMaplePacketHandler {
-    
+public final class PetChatHandler extends AbstractPacketHandler {
+    private static final Logger log = LoggerFactory.getLogger(PetChatHandler.class);
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int petId = slea.readInt();
-        slea.readInt();
-        slea.readByte();
-        int act = slea.readByte();
+    public void handlePacket(InPacket p, Client c) {
+        int petId = p.readInt();
+        p.readInt();
+        p.readByte();
+        int act = p.readByte();
         byte pet = c.getPlayer().getPetIndex(petId);
         if ((pet < 0 || pet > 3) || (act < 0 || act > 9)) {
-        	return;
+            return;
         }
-        String text = slea.readMapleAsciiString();
+        String text = p.readString();
         if (text.length() > Byte.MAX_VALUE) {
-        	AutobanFactory.PACKET_EDIT.alert(c.getPlayer(), c.getPlayer().getName() + " tried to packet edit with pets.");
-        	FilePrinter.printError(FilePrinter.EXPLOITS + c.getPlayer().getName() + ".txt", c.getPlayer().getName() + " tried to send text with length of " + text.length());
-        	c.disconnect(true, false);
-        	return;
+            AutobanFactory.PACKET_EDIT.alert(c.getPlayer(), c.getPlayer().getName() + " tried to packet edit with pets.");
+            log.warn("Chr {} tried to send text with length of {}", c.getPlayer().getName(), text.length());
+            c.disconnect(true, false);
+            return;
         }
-        c.getPlayer().getMap().broadcastMessage(c.getPlayer(), MaplePacketCreator.petChat(c.getPlayer().getId(), pet, act, text), true);
-        if (YamlConfig.config.server.USE_ENABLE_CHAT_LOG) {
-            LogHelper.logChat(c, "Pet", text);
-        }
-    } 
+        c.getPlayer().getMap().broadcastMessage(c.getPlayer(), PacketCreator.petChat(c.getPlayer().getId(), pet, act, text), true);
+        ChatLogger.log(c, "Pet", text);
+    }
 }

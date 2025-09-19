@@ -21,24 +21,24 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 
-public final class CancelDebuffHandler extends AbstractMaplePacketHandler {//TIP: BAD STUFF LOL!
+public final class CancelDebuffHandler extends AbstractPacketHandler {//TIP: BAD STUFF LOL!
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        /*List<MapleDisease> diseases = c.getPlayer().getDiseases();
-         List<MapleDisease> diseases_ = new ArrayList<MapleDisease>();
-         for (MapleDisease disease : diseases) {
-         List<MapleDisease> disease_ = new ArrayList<MapleDisease>();
+    public final void handlePacket(InPacket p, Client c) {
+        /*List<Disease> diseases = c.getPlayer().getDiseases();
+         List<Disease> diseases_ = new ArrayList<Disease>();
+         for (Disease disease : diseases) {
+         List<Disease> disease_ = new ArrayList<Disease>();
          disease_.add(disease);
          diseases_.add(disease);
-         c.announce(MaplePacketCreator.cancelDebuff(disease_));
-         c.getPlayer().getMap().broadcastMessage(c.getPlayer(), MaplePacketCreator.cancelForeignDebuff(c.getPlayer().getId(), disease_), false);
+         c.sendPacket(PacketCreator.cancelDebuff(disease_));
+         c.getPlayer().getMap().broadcastMessage(c.getPlayer(), PacketCreator.cancelForeignDebuff(c.getPlayer().getId(), disease_), false);
          }
-         for (MapleDisease disease : diseases_) {
+         for (Disease disease : diseases_) {
          c.getPlayer().removeDisease(disease);
          }*/
     }

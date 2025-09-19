@@ -19,42 +19,41 @@
 */
 package net.server.coordinator.partysearch;
 
-import client.MapleCharacter;
+import client.Character;
 
 import java.lang.ref.WeakReference;
 
 /**
- *
  * @author Ronan
  */
 public class PartySearchCharacter {
-    
-    private WeakReference<MapleCharacter> player;
-    private int level;
+
+    private final WeakReference<Character> player;
+    private final int level;
     private boolean queued;
-    
-    public PartySearchCharacter(MapleCharacter chr) {
+
+    public PartySearchCharacter(Character chr) {
         player = new WeakReference(chr);
         level = chr.getLevel();
         queued = true;
     }
-    
+
     @Override
     public String toString() {
-        MapleCharacter chr = player.get();
+        Character chr = player.get();
         return chr == null ? "[empty]" : chr.toString();
     }
-    
-    public MapleCharacter callPlayer(int leaderid, int callerMapid) {
-        MapleCharacter chr = player.get();
-        if (chr == null || !MaplePartySearchCoordinator.isInVicinity(callerMapid, chr.getMapId())) {
+
+    public Character callPlayer(int leaderid, int callerMapid) {
+        Character chr = player.get();
+        if (chr == null || !PartySearchCoordinator.isInVicinity(callerMapid, chr.getMapId())) {
             return null;
         }
-        
+
         if (chr.hasDisabledPartySearchInvite(leaderid)) {
             return null;
         }
-        
+
         queued = false;
         if (chr.isLoggedinWorld() && chr.getParty() == null) {
             return chr;
@@ -62,17 +61,17 @@ public class PartySearchCharacter {
             return null;
         }
     }
-    
-    public MapleCharacter getPlayer() {
+
+    public Character getPlayer() {
         return player.get();
     }
-    
+
     public int getLevel() {
         return level;
     }
-    
+
     public boolean isQueued() {
         return queued;
     }
-    
+
 }

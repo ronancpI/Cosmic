@@ -21,47 +21,48 @@
  */
 package server.quest.requirements;
 
-import client.MapleCharacter;
-import client.inventory.MaplePet;
-import provider.MapleData;
-import provider.MapleDataTool;
-import server.quest.MapleQuest;
-import server.quest.MapleQuestRequirementType;
+import client.Character;
+import client.inventory.Pet;
+import provider.Data;
+import provider.DataTool;
+import server.quest.Quest;
+import server.quest.QuestRequirementType;
 
 /**
- *
  * @author Tyler (Twdtwd)
  */
-public class MinTamenessRequirement extends MapleQuestRequirement {
-	private int minTameness;
-	
-	
-	public MinTamenessRequirement(MapleQuest quest, MapleData data) {
-		super(MapleQuestRequirementType.MIN_PET_TAMENESS);
-		processData(data);
-	}
-	
-	/**
-	 * 
-	 * @param data 
-	 */
-	@Override
-	public void processData(MapleData data) {
-		minTameness = MapleDataTool.getInt(data);
-	}
-	
-	
-	@Override
-	public boolean check(MapleCharacter chr, Integer npcid) {
-		int curCloseness = 0;
-                
-		for(MaplePet pet : chr.getPets()) {
-                    if(pet == null) continue;
-                    
-                    if(pet.getCloseness() > curCloseness)
-                        curCloseness = pet.getCloseness();
-		}
-		
-		return curCloseness >= minTameness;
-	}
+public class MinTamenessRequirement extends AbstractQuestRequirement {
+    private int minTameness;
+
+
+    public MinTamenessRequirement(Quest quest, Data data) {
+        super(QuestRequirementType.MIN_PET_TAMENESS);
+        processData(data);
+    }
+
+    /**
+     * @param data
+     */
+    @Override
+    public void processData(Data data) {
+        minTameness = DataTool.getInt(data);
+    }
+
+
+    @Override
+    public boolean check(Character chr, Integer npcid) {
+        int curTameness = 0;
+
+        for (Pet pet : chr.getPets()) {
+            if (pet == null) {
+                continue;
+            }
+
+            if (pet.getTameness() > curTameness) {
+                curTameness = pet.getTameness();
+            }
+        }
+
+        return curTameness >= minTameness;
+    }
 }

@@ -19,51 +19,53 @@
 */
 package client.processor.action;
 
-import client.MapleCharacter;
-import java.awt.Point;
-import client.MapleClient;
-import client.inventory.MapleInventoryType;
-import client.inventory.MaplePet;
+import client.Character;
+import client.Client;
 import client.SkillFactory;
-import provider.MapleDataTool;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import java.io.File;
-import provider.MapleDataProvider;
-import provider.MapleDataProviderFactory;
-import tools.MaplePacketCreator;
+import client.inventory.InventoryType;
+import client.inventory.Pet;
+import client.inventory.manipulator.InventoryManipulator;
+import constants.id.ItemId;
+import provider.DataProvider;
+import provider.DataProviderFactory;
+import provider.DataTool;
+import provider.wz.WZFiles;
+import tools.PacketCreator;
+
+import java.awt.*;
 
 /**
- *
  * @author RonanLana - just added locking on OdinMS' SpawnPetHandler method body
  */
 public class SpawnPetProcessor {
-    private static MapleDataProvider dataRoot = MapleDataProviderFactory.getDataProvider(new File(System.getProperty("wzpath") + "/Item.wz"));
-    
-    public static void processSpawnPet(MapleClient c, byte slot, boolean lead) {
+    private static final DataProvider dataRoot = DataProviderFactory.getDataProvider(WZFiles.ITEM);
+
+    public static void processSpawnPet(Client c, byte slot, boolean lead) {
         if (c.tryacquireClient()) {
             try {
-                MapleCharacter chr = c.getPlayer();
-                MaplePet pet = chr.getInventory(MapleInventoryType.CASH).getItem(slot).getPet();
-                if (pet == null) return;
+                Character chr = c.getPlayer();
+                Pet pet = chr.getInventory(InventoryType.CASH).getItem(slot).getPet();
+                if (pet == null) {
+                    return;
+                }
 
                 int petid = pet.getItemId();
-                if (petid == 5000028 || petid == 5000047) //Handles Dragon AND Robos
-                {
+                if (petid == ItemId.DRAGON_PET || petid == ItemId.ROBO_PET) {
                     if (chr.haveItem(petid + 1)) {
-                        chr.dropMessage(5, "You can't hatch your " + (petid == 5000028 ? "Dragon egg" : "Robo egg") + " if you already have a Baby " + (petid == 5000028 ? "Dragon." : "Robo."));
-                        c.announce(MaplePacketCreator.enableActions());
+                        chr.dropMessage(5, "You can't hatch your " + (petid == ItemId.DRAGON_PET ? "Dragon egg" : "Robo egg") + " if you already have a Baby " + (petid == ItemId.DRAGON_PET ? "Dragon." : "Robo."));
+                        c.sendPacket(PacketCreator.enableActions());
                         return;
                     } else {
-                        int evolveid = MapleDataTool.getInt("info/evol1", dataRoot.getData("Pet/" + petid + ".img"));
-                        int petId = MaplePet.createPet(evolveid);
+                        int evolveid = DataTool.getInt("info/evol1", dataRoot.getData("Pet/" + petid + ".img"));
+                        int petId = Pet.createPet(evolveid);
                         if (petId == -1) {
                             return;
                         }
-                        long expiration = chr.getInventory(MapleInventoryType.CASH).getItem(slot).getExpiration();
-                        MapleInventoryManipulator.removeById(c, MapleInventoryType.CASH, petid, (short) 1, false, false);
-                        MapleInventoryManipulator.addById(c, evolveid, (short) 1, null, petId, expiration);
-                        
-                        c.announce(MaplePacketCreator.enableActions());
+                        long expiration = chr.getInventory(InventoryType.CASH).getItem(slot).getExpiration();
+                        InventoryManipulator.removeById(c, InventoryType.CASH, petid, (short) 1, false, false);
+                        InventoryManipulator.addById(c, evolveid, (short) 1, null, petId, expiration);
+
+                        c.sendPacket(PacketCreator.enableActions());
                         return;
                     }
                 }
@@ -84,9 +86,9 @@ public class SpawnPetProcessor {
                     pet.setSummoned(true);
                     pet.saveToDb();
                     chr.addPet(pet);
-                    chr.getMap().broadcastMessage(c.getPlayer(), MaplePacketCreator.showPet(c.getPlayer(), pet, false, false), true);
-                    c.announce(MaplePacketCreator.petStatUpdate(c.getPlayer()));
-                    c.announce(MaplePacketCreator.enableActions());
+                    chr.getMap().broadcastMessage(c.getPlayer(), PacketCreator.showPet(c.getPlayer(), pet, false, false), true);
+                    c.sendPacket(PacketCreator.petStatUpdate(c.getPlayer()));
+                    c.sendPacket(PacketCreator.enableActions());
 
                     chr.commitExcludedItems();
                     chr.getClient().getWorldServer().registerPetHunger(chr, chr.getPetIndex(pet));

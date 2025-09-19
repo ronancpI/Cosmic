@@ -21,35 +21,36 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package net.server.channel.handlers;
 
-import java.awt.Point;
-
-import client.MapleCharacter;
-import client.MapleClient;
-import server.maps.MapleDragon;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Character;
+import client.Client;
+import net.packet.InPacket;
+import server.maps.Dragon;
+import tools.PacketCreator;
 import tools.exceptions.EmptyMovementException;
+
+import java.awt.*;
 
 
 public class MoveDragonHandler extends AbstractMovementPacketHandler {
     @Override
-    public void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        final MapleCharacter chr = c.getPlayer();
-        final Point startPos = new Point(slea.readShort(), slea.readShort());
-        final MapleDragon dragon = chr.getDragon();
+    public void handlePacket(InPacket p, Client c) {
+        final Character chr = c.getPlayer();
+        final Point startPos = new Point(p.readShort(), p.readShort());
+        final Dragon dragon = chr.getDragon();
         if (dragon != null) {
             try {
-                long movementDataStart = slea.getPosition();
-                updatePosition(slea, dragon, 0);
-                long movementDataLength = slea.getPosition() - movementDataStart; //how many bytes were read by updatePosition
-                slea.seek(movementDataStart);
-                
+                int movementDataStart = p.getPosition();
+                updatePosition(p, dragon, 0);
+                long movementDataLength = p.getPosition() - movementDataStart; //how many bytes were read by updatePosition
+                p.seek(movementDataStart);
+
                 if (chr.isHidden()) {
-                    chr.getMap().broadcastGMMessage(chr, MaplePacketCreator.moveDragon(dragon, startPos, slea, movementDataLength));
+                    chr.getMap().broadcastGMPacket(chr, PacketCreator.moveDragon(dragon, startPos, p, movementDataLength));
                 } else {
-                    chr.getMap().broadcastMessage(chr, MaplePacketCreator.moveDragon(dragon, startPos, slea, movementDataLength), dragon.getPosition());
+                    chr.getMap().broadcastMessage(chr, PacketCreator.moveDragon(dragon, startPos, p, movementDataLength), dragon.getPosition());
                 }
-            } catch (EmptyMovementException e) {}
+            } catch (EmptyMovementException e) {
+            }
         }
     }
 }

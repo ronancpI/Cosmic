@@ -5,17 +5,18 @@
 
 package server.events;
 
-import client.MapleCharacter;
+import client.Character;
 import client.SkillFactory;
 
+import static java.util.concurrent.TimeUnit.DAYS;
+
 /**
- *
  * @author kevintjuh93
  */
-public class RescueGaga extends MapleEvents {
-    
+public class RescueGaga extends Events {
+
     private int completed;
-    
+
     public RescueGaga(int completed) {
         super();
         this.completed = completed;
@@ -33,8 +34,8 @@ public class RescueGaga extends MapleEvents {
     public int getInfo() {
         return getCompleted();
     }
-    
-    public void giveSkill(MapleCharacter chr) {
+
+    public void giveSkill(Character chr) {
         int skillid = 0;
         switch (chr.getJobType()) {
             case 0:
@@ -44,8 +45,8 @@ public class RescueGaga extends MapleEvents {
             case 2:
                 skillid = 10001014;
         }
-        
-        long expiration = (System.currentTimeMillis() + 3600 * 24 * 20 * 1000);//20 days
+
+        long expiration = (System.currentTimeMillis() + DAYS.toMillis(20));
         if (completed < 20) {
             chr.changeSkillLevel(SkillFactory.getSkill(skillid), (byte) 1, 1, expiration);
             chr.changeSkillLevel(SkillFactory.getSkill(skillid + 1), (byte) 1, 1, expiration);
@@ -54,5 +55,5 @@ public class RescueGaga extends MapleEvents {
             chr.changeSkillLevel(SkillFactory.getSkill(skillid), (byte) 2, 2, chr.getSkillExpiration(skillid));
         }
     }
-    
+
 }

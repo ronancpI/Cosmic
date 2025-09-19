@@ -21,18 +21,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package net.server.channel.handlers;
 
-import client.MapleBuffStat;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.BuffStat;
+import client.Character;
+import client.Client;
 import client.Skill;
 import client.SkillFactory;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
-import client.inventory.MapleWeaponType;
-import client.inventory.manipulator.MapleInventoryManipulator;
+import client.inventory.WeaponType;
+import client.inventory.manipulator.InventoryManipulator;
 import config.YamlConfig;
-import constants.game.GameConstants;
+import constants.id.ItemId;
+import constants.id.MapId;
 import constants.inventory.ItemConstants;
 import constants.skills.Aran;
 import constants.skills.Buccaneer;
@@ -41,82 +42,94 @@ import constants.skills.NightWalker;
 import constants.skills.Shadower;
 import constants.skills.ThunderBreaker;
 import constants.skills.WindArcher;
-import server.MapleItemInformationProvider;
-import server.MapleStatEffect;
-import tools.MaplePacketCreator;
+import net.packet.InPacket;
+import net.packet.Packet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
+import server.StatEffect;
+import tools.PacketCreator;
 import tools.Randomizer;
-import tools.data.input.SeekableLittleEndianAccessor;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 
 public final class RangedAttackHandler extends AbstractDealDamageHandler {
+    private static final Logger log = LoggerFactory.getLogger(RangedAttackHandler.class);
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
+    public void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
         
         /*long timeElapsed = currentServerTime() - chr.getAutobanManager().getLastSpam(8);
         if(timeElapsed < 300) {
             AutobanFactory.FAST_ATTACK.alert(chr, "Time: " + timeElapsed);
         }
         chr.getAutobanManager().spam(8);*/
-		
-        AttackInfo attack = parseDamage(slea, chr, true, false);
-        
-        if (chr.getBuffEffect(MapleBuffStat.MORPH) != null) {
-            if(chr.getBuffEffect(MapleBuffStat.MORPH).isMorphWithoutAttack()) {
+
+        AttackInfo attack = parseDamage(p, chr, true, false);
+
+        if (chr.getBuffEffect(BuffStat.MORPH) != null) {
+            if (chr.getBuffEffect(BuffStat.MORPH).isMorphWithoutAttack()) {
                 // How are they attacking when the client won't let them?
                 chr.getClient().disconnect(false, false);
-                return; 
+                return;
             }
         }
-        
-        if (GameConstants.isDojo(chr.getMap().getId()) && attack.numAttacked > 0) {
+
+        if (MapId.isDojo(chr.getMap().getId()) && attack.numAttacked > 0) {
             chr.setDojoEnergy(chr.getDojoEnergy() + YamlConfig.config.server.DOJO_ENERGY_ATK);
-            c.announce(MaplePacketCreator.getEnergy("energy", chr.getDojoEnergy()));
+            c.sendPacket(PacketCreator.getEnergy("energy", chr.getDojoEnergy()));
         }
-        
+
         if (attack.skill == Buccaneer.ENERGY_ORB || attack.skill == ThunderBreaker.SPARK || attack.skill == Shadower.TAUNT || attack.skill == NightLord.TAUNT) {
-            chr.getMap().broadcastMessage(chr, MaplePacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.stance, attack.numAttackedAndDamage, 0, attack.allDamage, attack.speed, attack.direction, attack.display), false);
+            chr.getMap().broadcastMessage(chr, PacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel,
+                    attack.stance, attack.numAttackedAndDamage, 0, attack.targets, attack.speed,
+                    attack.direction, attack.display), false);
             applyAttack(attack, chr, 1);
         } else if (attack.skill == ThunderBreaker.SHARK_WAVE && chr.getSkillLevel(ThunderBreaker.SHARK_WAVE) > 0) {
-            chr.getMap().broadcastMessage(chr, MaplePacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.stance, attack.numAttackedAndDamage, 0, attack.allDamage, attack.speed, attack.direction, attack.display), false);
+            chr.getMap().broadcastMessage(chr, PacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel,
+                    attack.stance, attack.numAttackedAndDamage, 0, attack.targets, attack.speed,
+                    attack.direction, attack.display), false);
             applyAttack(attack, chr, 1);
-            
+
             for (int i = 0; i < attack.numAttacked; i++) {
                 chr.handleEnergyChargeGain();
             }
         } else if (attack.skill == Aran.COMBO_SMASH || attack.skill == Aran.COMBO_FENRIR || attack.skill == Aran.COMBO_TEMPEST) {
-            chr.getMap().broadcastMessage(chr, MaplePacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.stance, attack.numAttackedAndDamage, 0, attack.allDamage, attack.speed, attack.direction, attack.display), false);
+            chr.getMap().broadcastMessage(chr, PacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel,
+                    attack.stance, attack.numAttackedAndDamage, 0, attack.targets, attack.speed,
+                    attack.direction, attack.display), false);
             if (attack.skill == Aran.COMBO_SMASH && chr.getCombo() >= 30) {
-            	chr.setCombo((short) 0);
-            	applyAttack(attack, chr, 1);
+                chr.setCombo((short) 0);
+                applyAttack(attack, chr, 1);
             } else if (attack.skill == Aran.COMBO_FENRIR && chr.getCombo() >= 100) {
-            	chr.setCombo((short) 0);
-            	applyAttack(attack, chr, 2);
+                chr.setCombo((short) 0);
+                applyAttack(attack, chr, 2);
             } else if (attack.skill == Aran.COMBO_TEMPEST && chr.getCombo() >= 200) {
-            	chr.setCombo((short) 0);
+                chr.setCombo((short) 0);
                 applyAttack(attack, chr, 4);
             }
         } else {
-            Item weapon = chr.getInventory(MapleInventoryType.EQUIPPED).getItem((short) -11);
-            MapleWeaponType type = MapleItemInformationProvider.getInstance().getWeaponType(weapon.getItemId());
-            if (type == MapleWeaponType.NOT_A_WEAPON) {
+            Item weapon = chr.getInventory(InventoryType.EQUIPPED).getItem((short) -11);
+            WeaponType type = ItemInformationProvider.getInstance().getWeaponType(weapon.getItemId());
+            if (type == WeaponType.NOT_A_WEAPON) {
                 return;
             }
             short slot = -1;
             int projectile = 0;
             short bulletCount = 1;
-            MapleStatEffect effect = null;
+            StatEffect effect = null;
             if (attack.skill != 0) {
                 effect = attack.getAttackEffect(chr, null);
                 bulletCount = effect.getBulletCount();
                 if (effect.getCooldown() > 0) {
-                    c.announce(MaplePacketCreator.skillCooldown(attack.skill, effect.getCooldown()));
+                    c.sendPacket(PacketCreator.skillCooldown(attack.skill, effect.getCooldown()));
                 }
-                
-                if(attack.skill == 4111004) {   // shadow meso
+
+                if (attack.skill == 4111004) {   // shadow meso
                     bulletCount = 0;
-                    
+
                     int money = effect.getMoneyCon();
                     if (money != 0) {
                         int moneyMod = money / 2;
@@ -128,29 +141,29 @@ public final class RangedAttackHandler extends AbstractDealDamageHandler {
                     }
                 }
             }
-            boolean hasShadowPartner = chr.getBuffedValue(MapleBuffStat.SHADOWPARTNER) != null;
+            boolean hasShadowPartner = chr.getBuffedValue(BuffStat.SHADOWPARTNER) != null;
             if (hasShadowPartner) {
                 bulletCount *= 2;
             }
-            MapleInventory inv = chr.getInventory(MapleInventoryType.USE);
+            Inventory inv = chr.getInventory(InventoryType.USE);
             for (short i = 1; i <= inv.getSlotLimit(); i++) {
                 Item item = inv.getItem(i);
                 if (item != null) {
                     int id = item.getItemId();
                     slot = item.getPosition();
-                    
+
                     boolean bow = ItemConstants.isArrowForBow(id);
                     boolean cbow = ItemConstants.isArrowForCrossBow(id);
                     if (item.getQuantity() >= bulletCount) { //Fixes the bug where you can't use your last arrow.
-                        if (type == MapleWeaponType.CLAW && ItemConstants.isThrowingStar(id) && weapon.getItemId() != 1472063) {
-                            if (((id == 2070007 || id == 2070018) && chr.getLevel() < 70) || (id == 2070016 && chr.getLevel() < 50)) {
-                            } else {	
+                        if (type == WeaponType.CLAW && ItemConstants.isThrowingStar(id) && weapon.getItemId() != ItemId.MAGICAL_MITTEN) {
+                            if (((id == ItemId.HWABI_THROWING_STARS || id == ItemId.BALANCED_FURY) && chr.getLevel() < 70) || (id == ItemId.CRYSTAL_ILBI_THROWING_STARS && chr.getLevel() < 50)) {
+                            } else {
                                 projectile = id;
                                 break;
                             }
-                        } else if ((type == MapleWeaponType.GUN && ItemConstants.isBullet(id))) {
-                            if (id == 2331000 && id == 2332000) {
-                                if (chr.getLevel() > 69) {
+                        } else if ((type == WeaponType.GUN && ItemConstants.isBullet(id))) {
+                            if (id == ItemId.BLAZE_CAPSULE || id == ItemId.GLAZE_CAPSULE) {
+                                if (chr.getLevel() >= 70) {
                                     projectile = id;
                                     break;
                                 }
@@ -158,32 +171,35 @@ public final class RangedAttackHandler extends AbstractDealDamageHandler {
                                 projectile = id;
                                 break;
                             }
-                        } else if ((type == MapleWeaponType.BOW && bow) || (type == MapleWeaponType.CROSSBOW && cbow) || (weapon.getItemId() == 1472063 && (bow || cbow))) {
+                        } else if ((type == WeaponType.BOW && bow) || (type == WeaponType.CROSSBOW && cbow) || (weapon.getItemId() == ItemId.MAGICAL_MITTEN && (bow || cbow))) {
                             projectile = id;
                             break;
                         }
                     }
                 }
-            }            
-            boolean soulArrow = chr.getBuffedValue(MapleBuffStat.SOULARROW) != null;
-            boolean shadowClaw = chr.getBuffedValue(MapleBuffStat.SHADOW_CLAW) != null;
+            }
+            boolean soulArrow = chr.getBuffedValue(BuffStat.SOULARROW) != null;
+            boolean shadowClaw = chr.getBuffedValue(BuffStat.SHADOW_CLAW) != null;
             if (projectile != 0) {
                 if (!soulArrow && !shadowClaw && attack.skill != 11101004 && attack.skill != 15111007 && attack.skill != 14101006) {
                     short bulletConsume = bulletCount;
 
                     if (effect != null && effect.getBulletConsume() != 0) {
-                        bulletConsume = (byte) (effect.getBulletConsume() * (hasShadowPartner ? 2 : 1));           
+                        bulletConsume = (byte) (effect.getBulletConsume() * (hasShadowPartner ? 2 : 1));
                     }
 
-                    if(slot < 0) System.out.println("<ERROR> Projectile to use was unable to be found.");
-                    else MapleInventoryManipulator.removeFromSlot(c, MapleInventoryType.USE, slot, bulletConsume, false, true);
+                    if (slot < 0) {
+                        log.warn("<ERROR> Projectile to use was unable to be found.");
+                    } else {
+                        InventoryManipulator.removeFromSlot(c, InventoryType.USE, slot, bulletConsume, false, true);
+                    }
                 }
             }
-            
+
             if (projectile != 0 || soulArrow || attack.skill == 11101004 || attack.skill == 15111007 || attack.skill == 14101006 || attack.skill == 4111004 || attack.skill == 13101005) {
-            	int visProjectile = projectile; //visible projectile sent to players
+                int visProjectile = projectile; //visible projectile sent to players
                 if (ItemConstants.isThrowingStar(projectile)) {
-                    MapleInventory cash = chr.getInventory(MapleInventoryType.CASH);
+                    Inventory cash = chr.getInventory(InventoryType.CASH);
                     for (int i = 1; i <= cash.getSlotLimit(); i++) { // impose order...
                         Item item = cash.getItem((short) i);
                         if (item != null) {
@@ -196,42 +212,46 @@ public final class RangedAttackHandler extends AbstractDealDamageHandler {
                 } else if (soulArrow || attack.skill == 3111004 || attack.skill == 3211004 || attack.skill == 11101004 || attack.skill == 15111007 || attack.skill == 14101006 || attack.skill == 13101005) {
                     visProjectile = 0;
                 }
-                
-                byte[] packet;
+
+                final Packet packet;
                 switch (attack.skill) {
                     case 3121004: // Hurricane
                     case 3221001: // Pierce
                     case 5221004: // Rapid Fire
                     case 13111002: // KoC Hurricane
-                        packet = MaplePacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.rangedirection, attack.numAttackedAndDamage, visProjectile, attack.allDamage, attack.speed, attack.direction, attack.display);
+                        packet = PacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.rangedirection,
+                                attack.numAttackedAndDamage, visProjectile, attack.targets, attack.speed,
+                                attack.direction, attack.display);
                         break;
                     default:
-                        packet = MaplePacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.stance, attack.numAttackedAndDamage, visProjectile, attack.allDamage, attack.speed, attack.direction, attack.display);
+                        packet = PacketCreator.rangedAttack(chr, attack.skill, attack.skilllevel, attack.stance,
+                                attack.numAttackedAndDamage, visProjectile, attack.targets, attack.speed,
+                                attack.direction, attack.display);
                         break;
                 }
                 chr.getMap().broadcastMessage(chr, packet, false, true);
-                
+
                 if (attack.skill != 0) {
                     Skill skill = SkillFactory.getSkill(attack.skill);
-                    MapleStatEffect effect_ = skill.getEffect(chr.getSkillLevel(skill));
+                    StatEffect effect_ = skill.getEffect(chr.getSkillLevel(skill));
                     if (effect_.getCooldown() > 0) {
                         if (chr.skillIsCooling(attack.skill)) {
                             return;
                         } else {
-                            c.announce(MaplePacketCreator.skillCooldown(attack.skill, effect_.getCooldown()));
-                            chr.addCooldown(attack.skill, currentServerTime(), effect_.getCooldown() * 1000);
+                            c.sendPacket(PacketCreator.skillCooldown(attack.skill, effect_.getCooldown()));
+                            chr.addCooldown(attack.skill, currentServerTime(), SECONDS.toMillis(effect_.getCooldown()));
                         }
                     }
                 }
-                
-                if (chr.getSkillLevel(SkillFactory.getSkill(NightWalker.VANISH)) > 0 && chr.getBuffedValue(MapleBuffStat.DARKSIGHT) != null && attack.numAttacked > 0 && chr.getBuffSource(MapleBuffStat.DARKSIGHT) != 9101004) {
-                    chr.cancelEffectFromBuffStat(MapleBuffStat.DARKSIGHT);
-                    chr.cancelBuffStats(MapleBuffStat.DARKSIGHT);
-                } else if(chr.getSkillLevel(SkillFactory.getSkill(WindArcher.WIND_WALK)) > 0 && chr.getBuffedValue(MapleBuffStat.WIND_WALK) != null && attack.numAttacked > 0) {
-                    chr.cancelEffectFromBuffStat(MapleBuffStat.WIND_WALK);
-                    chr.cancelBuffStats(MapleBuffStat.WIND_WALK);
+
+                if (chr.getSkillLevel(SkillFactory.getSkill(NightWalker.VANISH)) > 0 && chr.getBuffedValue(BuffStat.DARKSIGHT) != null && attack.numAttacked > 0 && chr.getBuffSource(BuffStat.DARKSIGHT) != 9101004) {
+                    chr.cancelEffectFromBuffStat(BuffStat.DARKSIGHT);
+                    chr.cancelBuffStats(BuffStat.DARKSIGHT);
+                } else if (chr.getSkillLevel(SkillFactory.getSkill(WindArcher.WIND_WALK)) > 0 && chr.getBuffedValue(BuffStat.WIND_WALK) != null && attack.numAttacked > 0) {
+                    chr.cancelEffectFromBuffStat(BuffStat.WIND_WALK);
+                    chr.cancelBuffStats(BuffStat.WIND_WALK);
                 }
-                
+
                 applyAttack(attack, chr, bulletCount);
             }
         }

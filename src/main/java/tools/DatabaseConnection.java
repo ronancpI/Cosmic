@@ -3,14 +3,19 @@ package tools;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import config.YamlConfig;
+import database.note.NoteRowMapper;
+import org.jdbi.v3.core.Handle;
+import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.TimeUnit;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * @author Frz (Big Daddy)
@@ -20,13 +25,22 @@ import java.util.concurrent.TimeUnit;
 public class DatabaseConnection {
     private static final Logger log = LoggerFactory.getLogger(DatabaseConnection.class);
     private static HikariDataSource dataSource;
+    private static Jdbi jdbi;
 
     public static Connection getConnection() throws SQLException {
         if (dataSource == null) {
-            throw new IllegalStateException("Unable to get connection from uninitialized connection pool");
+            throw new IllegalStateException("Unable to get connection - connection pool is uninitialized");
         }
 
         return dataSource.getConnection();
+    }
+
+    public static Handle getHandle() {
+        if (jdbi == null) {
+            throw new IllegalStateException("Unable to get handle - connection pool is uninitialized");
+        }
+
+        return jdbi.open();
     }
 
     private static String getDbUrl() {
@@ -46,8 +60,8 @@ public class DatabaseConnection {
         config.setPassword(YamlConfig.config.server.DB_PASS);
 
         final int initFailTimeoutSeconds = YamlConfig.config.server.INIT_CONNECTION_POOL_TIMEOUT;
-        config.setInitializationFailTimeout(TimeUnit.SECONDS.toMillis(initFailTimeoutSeconds));
-        config.setConnectionTimeout(30 * 1000); // Hikari default
+        config.setInitializationFailTimeout(SECONDS.toMillis(initFailTimeoutSeconds));
+        config.setConnectionTimeout(SECONDS.toMillis(30)); // Hikari default
         config.setMaximumPoolSize(10); // Hikari default
 
         config.addDataSourceProperty("cachePrepStmts", true);
@@ -63,11 +77,17 @@ public class DatabaseConnection {
      * @return true if connection to the database initiated successfully, false if not successful
      */
     public static boolean initializeConnectionPool() {
-        log.info("Initializing connection pool...");
+        if (dataSource != null) {
+            return true;
+        }
+
         final HikariConfig config = getConfig();
+        log.info("Initializing database connection pool. Connecting to:'{}' with user:'{}'", config.getJdbcUrl(),
+                config.getUsername());
         Instant initStart = Instant.now();
         try {
             dataSource = new HikariDataSource(config);
+            initializeJdbi(dataSource);
             long initDuration = Duration.between(initStart, Instant.now()).toMillis();
             log.info("Connection pool initialized in {} ms", initDuration);
             return true;
@@ -78,5 +98,10 @@ public class DatabaseConnection {
 
         // Timed out - failed to initialize
         return false;
+    }
+
+    private static void initializeJdbi(DataSource dataSource) {
+        jdbi = Jdbi.create(dataSource)
+                .registerRowMapper(new NoteRowMapper());
     }
 }

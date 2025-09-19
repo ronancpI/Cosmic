@@ -31,14 +31,14 @@ public final class ExpTable {
         return level > 200 ? 2000000000 : exp[level];
     }
 
-    public static int getClosenessNeededForLevel(int level) {
+    public static int getTamenessNeededForLevel(int level) {
         return pet[level];
     }
 
     public static int getMountExpNeededForLevel(int level) {
         return mount[level];
     }
-    
+
     public static int getEquipExpNeededForLevel(int level) {
         return equip[level];
     }

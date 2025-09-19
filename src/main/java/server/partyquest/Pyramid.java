@@ -22,16 +22,19 @@
 
 package server.partyquest;
 
-import client.MapleCharacter;
-import net.server.world.MapleParty;
-import server.MapleItemInformationProvider;
+import client.Character;
+import constants.id.ItemId;
+import constants.id.MapId;
+import net.server.world.Party;
+import server.ItemInformationProvider;
 import server.TimerManager;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 import java.util.concurrent.ScheduledFuture;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 /**
- *
  * @author kevintjuh93
  */
 public class Pyramid extends PartyQuest {
@@ -57,7 +60,7 @@ public class Pyramid extends PartyQuest {
     ScheduledFuture<?> timer = null;
     ScheduledFuture<?> gaugeSchedule = null;
 
-    public Pyramid(MapleParty party, PyramidMode mode, int mapid) {
+    public Pyramid(Party party, PyramidMode mode, int mapid) {
         super(party);
         this.mode = mode;
         this.map = mapid;
@@ -82,7 +85,9 @@ public class Pyramid extends PartyQuest {
             count = 0;
             gaugeSchedule = TimerManager.getInstance().register(() -> {
                 gauge -= decrease;
-                if (gauge <= 0) warp(926010001);
+                if (gauge <= 0) {
+                    warp(MapId.NETTS_PYRAMID);
+                }
 
             }, 1000);
         }
@@ -90,23 +95,31 @@ public class Pyramid extends PartyQuest {
 
     public void kill() {
         kill++;
-        if (gauge < 100) count++;
+        if (gauge < 100) {
+            count++;
+        }
         gauge++;
         broadcastInfo("hit", kill);
-        if (gauge >= 100) gauge = 100;
+        if (gauge >= 100) {
+            gauge = 100;
+        }
         checkBuffs();
     }
 
     public void cool() {
         cool++;
         int plus = coolAdd;
-        if ((gauge + coolAdd) > 100) plus -= ((gauge + coolAdd) - 100);
+        if ((gauge + coolAdd) > 100) {
+            plus -= ((gauge + coolAdd) - 100);
+        }
         gauge += plus;
         count += plus;
-        if (gauge >= 100) gauge = 100;
+        if (gauge >= 100) {
+            gauge = 100;
+        }
         broadcastInfo("cool", cool);
         checkBuffs();
-       
+
     }
 
     public void miss() {
@@ -118,15 +131,16 @@ public class Pyramid extends PartyQuest {
 
     public int timer() {
         int value;
-        if (stage > 0)
+        if (stage > 0) {
             value = 180;
-        else
+        } else {
             value = 120;
+        }
 
         timer = TimerManager.getInstance().schedule(() -> {
             stage++;
             warp(map + (stage * 100));//Should work :D
-        }, value * 1000);//, 4000
+        }, SECONDS.toMillis(value));//, 4000
         broadcastInfo("party", getParticipants().size() > 1 ? 1 : 0);
         broadcastInfo("hit", kill);
         broadcastInfo("miss", miss);
@@ -138,7 +152,7 @@ public class Pyramid extends PartyQuest {
     }
 
     public void warp(int mapid) {
-        for (MapleCharacter chr : getParticipants()) {
+        for (Character chr : getParticipants()) {
             chr.changeMap(mapid, 0);
         }
         if (stage > -1) {
@@ -146,18 +160,22 @@ public class Pyramid extends PartyQuest {
             gaugeSchedule = null;
             timer.cancel(false);
             timer = null;
-        } else stage = 0;
+        } else {
+            stage = 0;
+        }
     }
 
     public void broadcastInfo(String info, int amount) {
-        for (MapleCharacter chr : getParticipants()) {
-            chr.announce(MaplePacketCreator.getEnergy("massacre_" + info, amount));
-            chr.announce(MaplePacketCreator.pyramidGauge(count));
+        for (Character chr : getParticipants()) {
+            chr.sendPacket(PacketCreator.getEnergy("massacre_" + info, amount));
+            chr.sendPacket(PacketCreator.pyramidGauge(count));
         }
     }
 
     public boolean useSkill() {
-        if (skill < 1) return false;
+        if (skill < 1) {
+            return false;
+        }
 
         skill--;
         broadcastInfo("skill", skill);
@@ -168,25 +186,26 @@ public class Pyramid extends PartyQuest {
         int total = (kill + cool);
         if (buffcount == 0 && total >= 250) {
             buffcount++;
-            MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-            for (MapleCharacter chr : getParticipants())
-                ii.getItemEffect(2022585).applyTo(chr);
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            for (Character chr : getParticipants()) {
+                ii.getItemEffect(ItemId.PHARAOHS_BLESSING_1).applyTo(chr);
+            }
 
         } else if (buffcount == 1 && total >= 500) {
             buffcount++;
             skill++;
-            MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-            for (MapleCharacter chr : getParticipants()) {
-                chr.announce(MaplePacketCreator.getEnergy("massacre_skill", skill));
-                ii.getItemEffect(2022586).applyTo(chr);
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            for (Character chr : getParticipants()) {
+                chr.sendPacket(PacketCreator.getEnergy("massacre_skill", skill));
+                ii.getItemEffect(ItemId.PHARAOHS_BLESSING_2).applyTo(chr);
             }
         } else if (buffcount == 2 && total >= 1000) {
             buffcount++;
             skill++;
-            MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-            for (MapleCharacter chr : getParticipants()) {
-                chr.announce(MaplePacketCreator.getEnergy("massacre_skill", skill));
-                ii.getItemEffect(2022587).applyTo(chr);
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            for (Character chr : getParticipants()) {
+                chr.sendPacket(PacketCreator.getEnergy("massacre_skill", skill));
+                ii.getItemEffect(ItemId.PHARAOHS_BLESSING_3).applyTo(chr);
             }
         } else if (buffcount == 3 && total >= 1500) {
             skill++;
@@ -194,10 +213,10 @@ public class Pyramid extends PartyQuest {
         } else if (buffcount == 4 && total >= 2000) {
             buffcount++;
             skill++;
-            MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
-            for (MapleCharacter chr : getParticipants()) {
-                chr.announce(MaplePacketCreator.getEnergy("massacre_skill", skill));
-                ii.getItemEffect(2022588).applyTo(chr);
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            for (Character chr : getParticipants()) {
+                chr.sendPacket(PacketCreator.getEnergy("massacre_skill", skill));
+                ii.getItemEffect(ItemId.PHARAOHS_BLESSING_4).applyTo(chr);
             }
         } else if (buffcount == 5 && total >= 2500) {
             skill++;
@@ -208,28 +227,42 @@ public class Pyramid extends PartyQuest {
         }
     }
 
-    public void sendScore(MapleCharacter chr) {
+    public void sendScore(Character chr) {
         if (exp == 0) {
             int totalkills = (kill + cool);
             if (stage == 5) {
-                if (totalkills >= 3000) rank = 0;
-                else if (totalkills >= 2000) rank = 1;
-                else if (totalkills >= 1500) rank = 2;
-                else if(totalkills >= 500) rank = 3;
-                else rank = 4;
+                if (totalkills >= 3000) {
+                    rank = 0;
+                } else if (totalkills >= 2000) {
+                    rank = 1;
+                } else if (totalkills >= 1500) {
+                    rank = 2;
+                } else if (totalkills >= 500) {
+                    rank = 3;
+                } else {
+                    rank = 4;
+                }
             } else {
-                if (totalkills >= 2000) rank = 3;
-                else rank = 4;
+                if (totalkills >= 2000) {
+                    rank = 3;
+                } else {
+                    rank = 4;
+                }
             }
 
-            if (rank == 0) exp = (60500 + (5500 * mode.getMode()));
-            else if(rank == 1) exp = (55000 + (5000 * mode.getMode()));
-            else if (rank == 2) exp = (46750 + (4250 * mode.getMode()));
-            else if (rank == 3) exp = (22000 + (2000 * mode.getMode()));
+            if (rank == 0) {
+                exp = (60500 + (5500 * mode.getMode()));
+            } else if (rank == 1) {
+                exp = (55000 + (5000 * mode.getMode()));
+            } else if (rank == 2) {
+                exp = (46750 + (4250 * mode.getMode()));
+            } else if (rank == 3) {
+                exp = (22000 + (2000 * mode.getMode()));
+            }
 
             exp += ((kill * 2) + (cool * 10));
         }
-        chr.announce(MaplePacketCreator.pyramidScore(rank, exp));
+        chr.sendPacket(PacketCreator.pyramidScore(rank, exp));
         chr.gainExp(exp, true, true);
     }
 }

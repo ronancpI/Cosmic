@@ -21,7 +21,7 @@
 */
 package net.server.task;
 
-import client.MapleJob;
+import client.Job;
 import config.YamlConfig;
 import net.server.Server;
 import tools.DatabaseConnection;
@@ -38,7 +38,7 @@ import java.sql.SQLException;
  */
 public class RankingLoginTask implements Runnable {
     private long lastUpdate = System.currentTimeMillis();
-    
+
     private void resetMoveRank(boolean job) throws SQLException {
         String query = "UPDATE characters SET " + (job ? "jobRankMove = 0" : "rankMove = 0");
         try (Connection con = DatabaseConnection.getConnection()) {
@@ -82,7 +82,7 @@ public class RankingLoginTask implements Runnable {
             }
         }
     }
-    
+
     @Override
     public void run() {
         try (Connection con = DatabaseConnection.getConnection()) {
@@ -96,7 +96,7 @@ public class RankingLoginTask implements Runnable {
 
                 for (int j = 0; j < Server.getInstance().getWorldsSize(); j++) {
                     updateRanking(-1, j);    //overall ranking
-                    for (int i = 0; i <= MapleJob.getMax(); i++) {
+                    for (int i = 0; i <= Job.getMax(); i++) {
                         updateRanking(i, j);
                     }
                     con.commit();

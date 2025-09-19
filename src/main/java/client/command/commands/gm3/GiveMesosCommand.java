@@ -23,8 +23,8 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 
 public class GiveMesosCommand extends Command {
@@ -33,8 +33,8 @@ public class GiveMesosCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !givems [<playername>] <gainmeso>");
             return;
@@ -42,7 +42,7 @@ public class GiveMesosCommand extends Command {
 
         String recv_, value_;
         long mesos_ = 0;
-        
+
         if (params.length == 2) {
             recv_ = params[0];
             value_ = params[1];
@@ -50,7 +50,7 @@ public class GiveMesosCommand extends Command {
             recv_ = c.getPlayer().getName();
             value_ = params[0];
         }
-        
+
         try {
             mesos_ = Long.parseLong(value_);
             if (mesos_ > Integer.MAX_VALUE) {
@@ -65,8 +65,8 @@ public class GiveMesosCommand extends Command {
                 mesos_ = Integer.MIN_VALUE;
             }
         }
-        
-        MapleCharacter victim = c.getWorldServer().getPlayerStorage().getCharacterByName(recv_);
+
+        Character victim = c.getWorldServer().getPlayerStorage().getCharacterByName(recv_);
         if (victim != null) {
             victim.gainMeso((int) mesos_, true);
             player.message("MESO given.");

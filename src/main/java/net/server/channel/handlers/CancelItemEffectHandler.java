@@ -21,17 +21,17 @@
  */
 package net.server.channel.handlers;
 
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import server.MapleItemInformationProvider;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import server.ItemInformationProvider;
 
-public final class CancelItemEffectHandler extends AbstractMaplePacketHandler {
+public final class CancelItemEffectHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        int itemId = -slea.readInt();
-        if (MapleItemInformationProvider.getInstance().noCancelMouse(itemId)) {
+    public final void handlePacket(InPacket p, Client c) {
+        int itemId = -p.readInt();
+        if (ItemInformationProvider.getInstance().noCancelMouse(itemId)) {
             return;
         }
         c.getPlayer().cancelEffect(itemId);

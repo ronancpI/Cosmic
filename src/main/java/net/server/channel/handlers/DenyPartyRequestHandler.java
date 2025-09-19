@@ -21,29 +21,29 @@
 */
 package net.server.channel.handlers;
 
-import client.MapleCharacter;
-import client.MapleClient;
-import net.AbstractMaplePacketHandler;
-import net.server.coordinator.world.MapleInviteCoordinator;
-import net.server.coordinator.world.MapleInviteCoordinator.InviteResult;
-import net.server.coordinator.world.MapleInviteCoordinator.InviteType;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
+import client.Character;
+import client.Client;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
+import net.server.coordinator.world.InviteCoordinator;
+import net.server.coordinator.world.InviteCoordinator.InviteResultType;
+import net.server.coordinator.world.InviteCoordinator.InviteType;
+import tools.PacketCreator;
 
-public final class DenyPartyRequestHandler extends AbstractMaplePacketHandler {
-    
+public final class DenyPartyRequestHandler extends AbstractPacketHandler {
+
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        slea.readByte();
-        String[] cname = slea.readMapleAsciiString().split("PS: ");
-        
-        MapleCharacter cfrom = c.getChannelServer().getPlayerStorage().getCharacterByName(cname[cname.length - 1]);
+    public final void handlePacket(InPacket p, Client c) {
+        p.readByte();
+        String[] cname = p.readString().split("PS: ");
+
+        Character cfrom = c.getChannelServer().getPlayerStorage().getCharacterByName(cname[cname.length - 1]);
         if (cfrom != null) {
-            MapleCharacter chr = c.getPlayer();
-            
-            if (MapleInviteCoordinator.answerInvite(InviteType.PARTY, chr.getId(), cfrom.getPartyId(), false).result == InviteResult.DENIED) {
+            Character chr = c.getPlayer();
+
+            if (InviteCoordinator.answerInvite(InviteType.PARTY, chr.getId(), cfrom.getPartyId(), false).result == InviteResultType.DENIED) {
                 chr.updatePartySearchAvailability(chr.getParty() == null);
-                cfrom.getClient().announce(MaplePacketCreator.partyStatusMessage(23, chr.getName()));
+                cfrom.sendPacket(PacketCreator.partyStatusMessage(23, chr.getName()));
             }
         }
     }

@@ -21,59 +21,67 @@
  */
 package net.server.channel.handlers;
 
-import config.YamlConfig;
-import net.AbstractMaplePacketHandler;
-import client.inventory.manipulator.MapleInventoryManipulator;
-import tools.MaplePacketCreator;
-import tools.data.input.SeekableLittleEndianAccessor;
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
+import client.inventory.manipulator.InventoryManipulator;
+import config.YamlConfig;
+import net.AbstractPacketHandler;
+import net.packet.InPacket;
 import net.server.Server;
-import server.MapleItemInformationProvider;
+import server.ItemInformationProvider;
+import tools.PacketCreator;
 
-public final class InventoryMergeHandler extends AbstractMaplePacketHandler {
+public final class InventoryMergeHandler extends AbstractPacketHandler {
 
     @Override
-    public final void handlePacket(SeekableLittleEndianAccessor slea, MapleClient c) {
-        MapleCharacter chr = c.getPlayer();
-        slea.readInt();
+    public final void handlePacket(InPacket p, Client c) {
+        Character chr = c.getPlayer();
+        p.readInt();
         chr.getAutobanManager().setTimestamp(2, Server.getInstance().getCurrentTimestamp(), 4);
-        
-        if(!YamlConfig.config.server.USE_ITEM_SORT) {
-            c.announce(MaplePacketCreator.enableActions());
+
+        if (!YamlConfig.config.server.USE_ITEM_SORT) {
+            c.sendPacket(PacketCreator.enableActions());
             return;
-	}
-        
-        byte invType = slea.readByte();
+        }
+
+        byte invType = p.readByte();
         if (invType < 1 || invType > 5) {
             c.disconnect(false, false);
             return;
         }
-        
-        MapleInventoryType inventoryType = MapleInventoryType.getByType(invType);	
-	MapleInventory inventory = c.getPlayer().getInventory(inventoryType);
+
+        InventoryType inventoryType = InventoryType.getByType(invType);
+        Inventory inventory = c.getPlayer().getInventory(inventoryType);
         inventory.lockInventory();
         try {
             //------------------- RonanLana's SLOT MERGER -----------------
-        
-            MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
+
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
             Item srcItem, dstItem;
 
-            for(short dst = 1; dst <= inventory.getSlotLimit(); dst++) {
+            for (short dst = 1; dst <= inventory.getSlotLimit(); dst++) {
                 dstItem = inventory.getItem(dst);
-                if(dstItem == null) continue;
+                if (dstItem == null) {
+                    continue;
+                }
 
-                for(short src = (short)(dst + 1); src <= inventory.getSlotLimit(); src++) {
+                for (short src = (short) (dst + 1); src <= inventory.getSlotLimit(); src++) {
                     srcItem = inventory.getItem(src);
-                    if(srcItem == null) continue;
+                    if (srcItem == null) {
+                        continue;
+                    }
 
-                    if(dstItem.getItemId() != srcItem.getItemId()) continue;
-                    if(dstItem.getQuantity() == ii.getSlotMax(c, inventory.getItem(dst).getItemId())) break;
+                    if (dstItem.getItemId() != srcItem.getItemId()) {
+                        continue;
+                    }
+                    if (dstItem.getQuantity() == ii.getSlotMax(c, inventory.getItem(dst).getItemId())) {
+                        break;
+                    }
 
-                    MapleInventoryManipulator.move(c, inventoryType, src, dst);
+                    InventoryManipulator.move(c, inventoryType, src, dst);
                 }
             }
 
@@ -94,7 +102,7 @@ public final class InventoryMergeHandler extends AbstractMaplePacketHandler {
                         }
                     }
                     if (itemSlot > 0) {
-                        MapleInventoryManipulator.move(c, inventoryType, itemSlot, freeSlot);
+                        InventoryManipulator.move(c, inventoryType, itemSlot, freeSlot);
                     } else {
                         sorted = true;
                     }
@@ -105,8 +113,8 @@ public final class InventoryMergeHandler extends AbstractMaplePacketHandler {
         } finally {
             inventory.unlockInventory();
         }
-        
-        c.announce(MaplePacketCreator.finishedSort(inventoryType.getType()));
-        c.announce(MaplePacketCreator.enableActions());
+
+        c.sendPacket(PacketCreator.finishedSort(inventoryType.getType()));
+        c.sendPacket(PacketCreator.enableActions());
     }
 }

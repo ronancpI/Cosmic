@@ -23,49 +23,61 @@
 */
 package client.processor.npc;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
 import client.inventory.Item;
 import client.inventory.ItemFactory;
-import client.inventory.MapleInventory;
-import client.inventory.MapleInventoryType;
-import client.inventory.manipulator.MapleInventoryManipulator;
+import client.inventory.manipulator.InventoryManipulator;
 import net.server.Server;
 import net.server.world.World;
-import server.MapleItemInformationProvider;
-import server.maps.MapleHiredMerchant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
+import server.maps.HiredMerchant;
+import service.NoteService;
 import tools.DatabaseConnection;
-import tools.FilePrinter;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 import tools.Pair;
 
-import java.sql.*;
-import java.util.Collections;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.LinkedList;
 import java.util.List;
 
+import static java.util.concurrent.TimeUnit.DAYS;
+
 /**
- *
  * @author RonanLana - synchronization of Fredrick modules and operation results
  */
 public class FredrickProcessor {
-    
-    private static int[] dailyReminders = new int[]{2, 5, 10, 15, 30, 60, 90, Integer.MAX_VALUE};
-    
-    private static byte canRetrieveFromFredrick(MapleCharacter chr, List<Pair<Item, MapleInventoryType>> items) {
-        if (!MapleInventory.checkSpotsAndOwnership(chr, items)) {
+    private static final Logger log = LoggerFactory.getLogger(FredrickProcessor.class);
+    private static final int[] dailyReminders = new int[]{2, 5, 10, 15, 30, 60, 90, Integer.MAX_VALUE};
+
+    private final NoteService noteService;
+
+    public FredrickProcessor(NoteService noteService) {
+        this.noteService = noteService;
+    }
+
+    private static byte canRetrieveFromFredrick(Character chr, List<Pair<Item, InventoryType>> items) {
+        if (!Inventory.checkSpotsAndOwnership(chr, items)) {
             List<Integer> itemids = new LinkedList<>();
-            for (Pair<Item, MapleInventoryType> it : items) {
+            for (Pair<Item, InventoryType> it : items) {
                 itemids.add(it.getLeft().getItemId());
             }
-            
+
             if (chr.canHoldUniques(itemids)) {
                 return 0x22;
             } else {
                 return 0x20;
             }
         }
-        
+
         int netMeso = chr.getMerchantNetMeso();
         if (netMeso > 0) {
             if (!chr.canHoldMeso(netMeso)) {
@@ -76,26 +88,26 @@ public class FredrickProcessor {
                 return 0x21;
             }
         }
-        
+
         return 0x0;
     }
-    
+
     public static int timestampElapsedDays(Timestamp then, long timeNow) {
-        return (int) ((timeNow - then.getTime()) / (1000 * 60 * 60 * 24));
+        return (int) ((timeNow - then.getTime()) / DAYS.toMillis(1));
     }
-    
+
     private static String fredrickReminderMessage(int daynotes) {
         String msg;
-        
+
         if (daynotes < 4) {
             msg = "Hi customer! I am Fredrick, the Union Chief of the Hired Merchant Union. A reminder that " + dailyReminders[daynotes] + " days have passed since you used our service. Please reclaim your stored goods at FM Entrance.";
         } else {
             msg = "Hi customer! I am Fredrick, the Union Chief of the Hired Merchant Union. " + dailyReminders[daynotes] + " days have passed since you used our service. Consider claiming back the items before we move them away for refund.";
         }
-        
+
         return msg;
     }
-    
+
     public static void removeFredrickLog(int cid) {
         try (Connection con = DatabaseConnection.getConnection()) {
             removeFredrickLog(con, cid);
@@ -103,14 +115,14 @@ public class FredrickProcessor {
             sqle.printStackTrace();
         }
     }
-    
+
     private static void removeFredrickLog(Connection con, int cid) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("DELETE FROM `fredstorage` WHERE `cid` = ?")) {
             ps.setInt(1, cid);
             ps.executeUpdate();
         }
     }
-    
+
     public static void insertFredrickLog(int cid) {
         try (Connection con = DatabaseConnection.getConnection()) {
 
@@ -124,15 +136,11 @@ public class FredrickProcessor {
             sqle.printStackTrace();
         }
     }
-    
-    public static void removeFredrickReminders(int cid) {
-        removeFredrickReminders(Collections.singletonList(new Pair<>(cid, 0)));
-    }
-    
+
     private static void removeFredrickReminders(List<Pair<Integer, Integer>> expiredCids) {
         List<String> expiredCnames = new LinkedList<>();
         for (Pair<Integer, Integer> id : expiredCids) {
-            String name = MapleCharacter.getNameById(id.getLeft());
+            String name = Character.getNameById(id.getLeft());
             if (name != null) {
                 expiredCnames.add(name);
             }
@@ -150,8 +158,8 @@ public class FredrickProcessor {
             e.printStackTrace();
         }
     }
-    
-    public static void runFredrickSchedule() {
+
+    public void runFredrickSchedule() {
         try (Connection con = DatabaseConnection.getConnection()) {
             List<Pair<Integer, Integer>> expiredCids = new LinkedList<>();
             List<Pair<Pair<Integer, String>, Integer>> notifCids = new LinkedList<>();
@@ -209,7 +217,7 @@ public class FredrickProcessor {
 
                         World wserv = Server.getInstance().getWorld(cid.getRight());
                         if (wserv != null) {
-                            MapleCharacter chr = wserv.getPlayerStorage().getCharacterById(cid.getLeft());
+                            Character chr = wserv.getPlayerStorage().getCharacterById(cid.getLeft());
                             if (chr != null) {
                                 chr.setMerchantMeso(0);
                             }
@@ -239,7 +247,7 @@ public class FredrickProcessor {
                         ps.addBatch();
 
                         String msg = fredrickReminderMessage(cid.getRight() - 1);
-                        MapleCharacter.sendNote(cid.getLeft().getRight(), "FREDRICK", msg, (byte) 0);
+                        noteService.sendNormal(msg, "FREDRICK", cid.getLeft().getRight());
                     }
 
                     ps.executeBatch();
@@ -263,38 +271,39 @@ public class FredrickProcessor {
             return false;
         }
     }
-    
-    public static void fredrickRetrieveItems(MapleClient c) {     // thanks Gustav for pointing out the dupe on Fredrick handling
+
+    public void fredrickRetrieveItems(Client c) {     // thanks Gustav for pointing out the dupe on Fredrick handling
         if (c.tryacquireClient()) {
             try {
-                MapleCharacter chr = c.getPlayer();
+                Character chr = c.getPlayer();
 
-                List<Pair<Item, MapleInventoryType>> items;
+                List<Pair<Item, InventoryType>> items;
                 try {
                     items = ItemFactory.MERCHANT.loadItems(chr.getId(), false);
-                    
+
                     byte response = canRetrieveFromFredrick(chr, items);
                     if (response != 0) {
-                        chr.announce(MaplePacketCreator.fredrickMessage(response));
+                        chr.sendPacket(PacketCreator.fredrickMessage(response));
                         return;
                     }
-                    
+
                     chr.withdrawMerchantMesos();
-                    
+
                     if (deleteFredrickItems(chr.getId())) {
-                        MapleHiredMerchant merchant = chr.getHiredMerchant();
+                        HiredMerchant merchant = chr.getHiredMerchant();
 
-                        if(merchant != null)
+                        if (merchant != null) {
                             merchant.clearItems();
-
-                        for (Pair<Item, MapleInventoryType> it : items) {
-                            Item item = it.getLeft();
-                            MapleInventoryManipulator.addFromDrop(chr.getClient(), item, false);
-                            String itemName = MapleItemInformationProvider.getInstance().getName(item.getItemId());
-                            FilePrinter.print(FilePrinter.FREDRICK + chr.getName() + ".txt", chr.getName() + " gained " + item.getQuantity() + " " + itemName + " (" + item.getItemId() + ")");
                         }
 
-                        chr.announce(MaplePacketCreator.fredrickMessage((byte) 0x1E));
+                        for (Pair<Item, InventoryType> it : items) {
+                            Item item = it.getLeft();
+                            InventoryManipulator.addFromDrop(chr.getClient(), item, false);
+                            String itemName = ItemInformationProvider.getInstance().getName(item.getItemId());
+                            log.debug("Chr {} gained {}x {} ({})", chr.getName(), item.getQuantity(), itemName, item.getItemId());
+                        }
+
+                        chr.sendPacket(PacketCreator.fredrickMessage((byte) 0x1E));
                         removeFredrickLog(chr.getId());
                     } else {
                         chr.message("An unknown error has occured.");

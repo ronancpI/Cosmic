@@ -23,8 +23,8 @@
 */
 package client.command.commands.gm3;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
 import net.server.Server;
 
@@ -34,8 +34,8 @@ public class FlyCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) { // fly option will become available for any character of that account
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) { // fly option will become available for any character of that account
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !fly <on/off>");
             return;
@@ -46,12 +46,16 @@ public class FlyCommand extends Command {
         String sendStr = "";
         if (params[0].equalsIgnoreCase("on")) {
             sendStr += "Enabled Fly feature (F1). With fly active, you cannot attack.";
-            if (!srv.canFly(accid)) sendStr += " Re-login to take effect.";
+            if (!srv.canFly(accid)) {
+                sendStr += " Re-login to take effect.";
+            }
 
             srv.changeFly(c.getAccID(), true);
         } else {
             sendStr += "Disabled Fly feature. You can now attack.";
-            if (srv.canFly(accid)) sendStr += " Re-login to take effect.";
+            if (srv.canFly(accid)) {
+                sendStr += " Re-login to take effect.";
+            }
 
             srv.changeFly(c.getAccID(), false);
         }

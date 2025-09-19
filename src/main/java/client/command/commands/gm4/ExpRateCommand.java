@@ -23,10 +23,10 @@
 */
 package client.command.commands.gm4;
 
-import client.MapleCharacter;
-import client.MapleClient;
+import client.Character;
+import client.Client;
 import client.command.Command;
-import tools.MaplePacketCreator;
+import tools.PacketCreator;
 
 public class ExpRateCommand extends Command {
     {
@@ -34,8 +34,8 @@ public class ExpRateCommand extends Command {
     }
 
     @Override
-    public void execute(MapleClient c, String[] params) {
-        MapleCharacter player = c.getPlayer();
+    public void execute(Client c, String[] params) {
+        Character player = c.getPlayer();
         if (params.length < 1) {
             player.yellowMessage("Syntax: !exprate <newrate>");
             return;
@@ -43,6 +43,6 @@ public class ExpRateCommand extends Command {
 
         int exprate = Math.max(Integer.parseInt(params[0]), 1);
         c.getWorldServer().setExpRate(exprate);
-        c.getWorldServer().broadcastPacket(MaplePacketCreator.serverNotice(6, "[Rate] Exp Rate has been changed to " + exprate + "x."));
+        c.getWorldServer().broadcastPacket(PacketCreator.serverNotice(6, "[Rate] Exp Rate has been changed to " + exprate + "x."));
     }
 }

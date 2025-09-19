@@ -21,23 +21,22 @@
 */
 package client.inventory;
 
-import provider.MapleData;
-import provider.MapleDataProvider;
-import provider.MapleDataProviderFactory;
-import provider.MapleDataTool;
+import provider.Data;
+import provider.DataProvider;
+import provider.DataProviderFactory;
+import provider.DataTool;
+import provider.wz.WZFiles;
 
-import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- *
  * @author Danny (Leifde)
  */
 public class PetDataFactory {
-    private static MapleDataProvider dataRoot = MapleDataProviderFactory.getDataProvider(new File(System.getProperty("wzpath") + "/Item.wz"));
-    private static Map<String, PetCommand> petCommands = new HashMap<>();
-    private static Map<Integer, Integer> petHunger = new HashMap<>();
+    private static final DataProvider dataRoot = DataProviderFactory.getDataProvider(WZFiles.ITEM);
+    private static final Map<String, PetCommand> petCommands = new HashMap<>();
+    private static final Map<Integer, Integer> petHunger = new HashMap<>();
 
     public static PetCommand getPetCommand(int petId, int skillId) {
         PetCommand ret = petCommands.get(petId + "" + skillId);
@@ -47,12 +46,12 @@ public class PetDataFactory {
         synchronized (petCommands) {
             ret = petCommands.get(petId + "" + skillId);
             if (ret == null) {
-                MapleData skillData = dataRoot.getData("Pet/" + petId + ".img");
+                Data skillData = dataRoot.getData("Pet/" + petId + ".img");
                 int prob = 0;
                 int inc = 0;
                 if (skillData != null) {
-                    prob = MapleDataTool.getInt("interact/" + skillId + "/prob", skillData, 0);
-                    inc = MapleDataTool.getInt("interact/" + skillId + "/inc", skillData, 0);
+                    prob = DataTool.getInt("interact/" + skillId + "/prob", skillData, 0);
+                    inc = DataTool.getInt("interact/" + skillId + "/inc", skillData, 0);
                 }
                 ret = new PetCommand(petId, skillId, prob, inc);
                 petCommands.put(petId + "" + skillId, ret);
@@ -69,7 +68,7 @@ public class PetDataFactory {
         synchronized (petHunger) {
             ret = petHunger.get(petId);
             if (ret == null) {
-                ret = MapleDataTool.getInt(dataRoot.getData("Pet/" + petId + ".img").getChildByPath("info/hungry"), 1);
+                ret = DataTool.getInt(dataRoot.getData("Pet/" + petId + ".img").getChildByPath("info/hungry"), 1);
             }
             return ret;
         }
